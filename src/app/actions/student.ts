@@ -1,0 +1,151 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
+import { notifyTutor } from "@/lib/email";
+import { formatDate, formatDateTime } from "@/lib/format";
+
+export type ActionState = { error?: string; ok?: boolean } | null;
+
+/**
+ * Saves what the student wants to work on for a session. One note per
+ * session: saving again edits the existing note.
+ */
+export async function saveFocus(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const sessionId = String(formData.get("session_id") ?? "");
+  const focusText = String(formData.get("focus_text") ?? "").trim();
+  if (!sessionId) return { error: "Tund puudub." };
+  if (!focusText) return { error: "Kirjuta, mida soovid harjutada." };
+
+  const profile = await getProfile();
+  if (!profile) return { error: "Sessioon on aegunud. Logi uuesti sisse." };
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("session_focus")
+    .select("id")
+    .eq("session_id", sessionId)
+    .eq("student_id", profile.id)
+    .maybeSingle();
+
+  const { error } = existing
+    ? await supabase
+        .from("session_focus")
+        .update({ focus_text: focusText })
+        .eq("id", existing.id)
+    : await supabase
+        .from("session_focus")
+        .insert({
+          session_id: sessionId,
+          student_id: profile.id,
+          focus_text: focusText,
+        });
+
+  if (error) return { error: "Salvestamine ebaõnnestus." };
+
+  await notifyTutor(`${profile.full_name}: soov järgmiseks tunniks`, [
+    `${profile.full_name} (${profile.grade ?? "klass määramata"}) ${
+      existing ? "muutis soovi" : "lisas soovi"
+    }:`,
+    "",
+    focusText,
+  ]);
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function addTest(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const subject = String(formData.get("subject") ?? "").trim();
+  const testDate = String(formData.get("test_date") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!subject) return { error: "Sisesta töö teema." };
+  if (!testDate) return { error: "Vali kuupäev." };
+
+  const profile = await getProfile();
+  if (!profile) return { error: "Sessioon on aegunud. Logi uuesti sisse." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("tests").insert({
+    student_id: profile.id,
+    subject,
+    test_date: testDate,
+    notes: notes || null,
+  });
+
+  if (error) return { error: "Salvestamine ebaõnnestus." };
+
+  await notifyTutor(`${profile.full_name}: uus kontrolltöö`, [
+    `${profile.full_name} lisas kontrolltöö.`,
+    "",
+    `Teema: ${subject}`,
+    `Kuupäev: ${formatDate(testDate)}`,
+    ...(notes ? ["", `Märkused: ${notes}`] : []),
+  ]);
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function deleteTest(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const supabase = await createClient();
+  await supabase.from("tests").delete().eq("id", id);
+  revalidatePath("/dashboard");
+}
+
+/**
+ * Records a PDF the student has just uploaded to Storage. The upload itself
+ * happens straight from the browser (storage policies enforce the path), so
+ * the file never travels through a server action body.
+ */
+export async function registerUpload(
+  sessionId: string,
+  filePath: string,
+  originalName: string,
+): Promise<ActionState> {
+  const profile = await getProfile();
+  if (!profile) return { error: "Sessioon on aegunud. Logi uuesti sisse." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("session_files").insert({
+    session_id: sessionId,
+    student_id: profile.id,
+    file_path: filePath,
+    original_name: originalName,
+  });
+
+  if (error) return { error: "Faili salvestamine ebaõnnestus." };
+
+  const { data: session } = await supabase
+    .from("sessions_public")
+    .select("scheduled_at")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  await notifyTutor(`${profile.full_name}: uus fail`, [
+    `${profile.full_name} laadis üles faili "${originalName}".`,
+    ...(session ? [`Tund: ${formatDateTime(session.scheduled_at)}`] : []),
+  ]);
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function deleteFile(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const path = String(formData.get("path") ?? "");
+
+  const supabase = await createClient();
+  await supabase.storage.from("student-files").remove([path]);
+  await supabase.from("session_files").delete().eq("id", id);
+  revalidatePath("/dashboard");
+}

@@ -1,0 +1,130 @@
+# Matemaatika — private tutoring hub
+
+A small, password-protected hub for one-on-one math tutoring. Students see their
+next session, say what they want to work on, upload PDFs and track upcoming
+tests. The tutor gets email notifications and an admin view over everything.
+
+Next.js (App Router) + TypeScript + Tailwind, Supabase for auth/database/storage,
+Resend for email, deployed on Vercel.
+
+## How access works
+
+Two layers:
+
+1. **Shared site password** (`/gate`) — a light front door in front of everything.
+   The cookie it sets holds an HMAC keyed by `SITE_GATE_PASSWORD`, so it cannot be
+   forged by setting a cookie by hand, and the password never reaches the browser.
+   This is a front door, not the real security.
+2. **Individual Supabase accounts** behind the gate, with three roles:
+   - `student` — reads and edits only their own data
+   - `parent` — read-only view of the one linked child
+   - `admin` — the tutor; full access
+
+The real enforcement is Postgres Row Level Security, not the UI. Every table has
+policies; see `supabase/migrations/0001_init.sql`.
+
+The tutor's private `tutor_notes` deserve a note of their own: RLS cannot hide a
+single column, so the `sessions` table is admin-only for reads, and students and
+parents read through the `sessions_public` view, which simply does not select
+that column.
+
+## Setup
+
+### 1. Supabase
+
+Create a project, then run `supabase/migrations/0001_init.sql` in the SQL editor.
+It creates the tables, RLS policies, the two storage buckets (both private) and
+the trigger that turns a signup into a `profiles` row.
+
+### 2. Environment
+
+Copy `.env.example` to `.env.local` and fill it in. In production set the same
+variables in the Vercel project settings.
+
+`SUPABASE_SERVICE_ROLE_KEY` and `RESEND_API_KEY` are server-only — they are read
+exclusively from server actions and route handlers, never from client components.
+
+### 3. Make yourself the admin
+
+Sign up through the app like a normal student, then in the Supabase SQL editor:
+
+```sql
+update public.profiles set role = 'admin'
+where id = (select id from auth.users where email = 'sinu@email.ee');
+```
+
+### 4. Link a parent account
+
+The parent signs up normally, then:
+
+```sql
+update public.profiles
+set role = 'parent',
+    parent_of = (select id from auth.users where email = 'opilane@email.ee')
+where id = (select id from auth.users where email = 'vanem@email.ee');
+```
+
+Role and parent links are deliberately not editable from the app: a trigger
+reverts any change to `role` or `parent_of` that does not come from the admin or
+from a direct SQL/service-role connection, so a student cannot promote
+themselves.
+
+### 5. Run it
+
+```bash
+npm install
+npm run dev
+```
+
+## Email notifications
+
+Sent from server-side code via Resend. The tutor is notified when a student
+adds or edits their focus note, uploads a PDF, or adds an upcoming test. The
+student is emailed when the tutor schedules a session or moves it to a new time.
+
+Sending is best-effort by design — if Resend is unconfigured or failing, the
+student's upload still succeeds and the failure is logged instead of surfacing
+as an error.
+
+## Testing the security rules
+
+The RLS policies are the thing actually protecting student data, so they have
+tests. They run against a throwaway local Postgres, stubbing the Supabase-managed
+objects (`auth.uid()`, `auth.users`, `storage`) so the migration runs unmodified:
+
+```bash
+supabase/tests/run.sh -h /tmp -p 5433 -U postgres
+```
+
+35 checks covering student isolation, cross-student write attempts, privilege
+escalation, parent read-only access, admin access and the storage path rules.
+
+```bash
+npm run typecheck   # tsc
+npm run build       # production build
+```
+
+## Layout
+
+```
+src/app/gate         shared password screen + its route handler
+src/app/login        Supabase email/password sign-in
+src/app/signup       sign-up, collecting name, grade and textbook
+src/app/dashboard    student: next session, focus note, PDF upload, tests, materials
+src/app/parent       parent: read-only view of their child
+src/app/admin        tutor: all students, sessions, files, materials
+src/app/actions      server actions (auth, student, admin)
+src/lib              Supabase clients, gate, email, formatting, types
+src/middleware.ts    enforces the gate, refreshes the Supabase session
+supabase/migrations  schema, RLS policies, storage policies
+supabase/tests       RLS test suite
+```
+
+## Notes on scope
+
+This is a v1 for a handful of users. Uploads are PDF-only and capped client-side
+(10 MB for students, 20 MB for materials). Sessions are created by the tutor;
+students and parents only read them. There is no booking, no payments and no
+scheduling logic.
+
+The interface is in Estonian; all code and comments are in English.
