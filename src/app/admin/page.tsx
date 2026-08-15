@@ -3,7 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { deleteMaterial, deleteSession } from "@/app/actions/admin";
+import {
+  approveAccount,
+  deleteAccount,
+  deleteMaterial,
+  deleteSession,
+  unlinkParent,
+} from "@/app/actions/admin";
 import type {
   Grade,
   Material,
@@ -33,9 +39,11 @@ export default async function AdminPage() {
     supabase.from("grades").select("*").order("received_on", { ascending: false }),
   ]);
 
-  const students = ((profiles as Profile[]) ?? []).filter((p) => p.role === "student");
-  const parents = ((profiles as Profile[]) ?? []).filter((p) => p.role === "parent");
-  const emails = await studentEmails(students.map((s) => s.id));
+  const everyone = (profiles as Profile[]) ?? [];
+  const pending = everyone.filter((p) => !p.approved && p.role !== "admin");
+  const students = everyone.filter((p) => p.role === "student" && p.approved);
+  const parents = everyone.filter((p) => p.role === "parent" && p.approved);
+  const emails = await studentEmails(everyone.map((s) => s.id));
 
   const allSessions = (sessions as TutorSession[]) ?? [];
   const allFocus = (focus as SessionFocus[]) ?? [];
@@ -50,7 +58,48 @@ export default async function AdminPage() {
     <>
       <PageHeader profile={profile} />
 
-      <main className="mx-auto max-w-4xl space-y-6 px-4 py-8">
+      <main className="mx-auto max-w-4xl space-y-5 px-4 py-6 sm:space-y-6 sm:py-8">
+        {pending.length > 0 && (
+          <Card title={`Ootab kinnitust (${pending.length})`}>
+            <ul className="divide-y divide-slate-100">
+              {pending.map((account) => (
+                <li
+                  key={account.id}
+                  className="flex flex-col gap-3 py-3 sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div>
+                    <p className="text-sm font-medium">{account.full_name}</p>
+                    <p className="text-sm text-slate-500">
+                      {[
+                        account.role === "parent" ? "lapsevanem" : "õpilane",
+                        account.grade,
+                        account.school,
+                        emails.get(account.id),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <form action={approveAccount}>
+                      <input type="hidden" name="id" value={account.id} />
+                      <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+                        Kinnita
+                      </button>
+                    </form>
+                    <form action={deleteAccount}>
+                      <input type="hidden" name="id" value={account.id} />
+                      <button className="text-sm text-slate-500 underline hover:text-red-600">
+                        Kustuta
+                      </button>
+                    </form>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
         <Card title="Uus tund">
           <SessionForm students={students} />
         </Card>
@@ -142,6 +191,26 @@ export default async function AdminPage() {
                 </div>
 
                 <div>
+                  <h3 className="mb-2 text-sm font-semibold text-slate-700">Konto</h3>
+                  <div className="flex flex-wrap items-center gap-4">
+                    {linkedParents.map((parent) => (
+                      <form key={parent.id} action={unlinkParent}>
+                        <input type="hidden" name="id" value={parent.id} />
+                        <button className="text-sm text-slate-500 underline hover:text-red-600">
+                          Eemalda vanem {parent.full_name}
+                        </button>
+                      </form>
+                    ))}
+                    <form action={deleteAccount}>
+                      <input type="hidden" name="id" value={student.id} />
+                      <button className="text-sm text-slate-500 underline hover:text-red-600">
+                        Kustuta õpilase konto
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+                <div>
                   <h3 className="mb-2 text-sm font-semibold text-slate-700">
                     Jaga fail ainult temaga
                   </h3>
@@ -202,6 +271,47 @@ export default async function AdminPage() {
             </Card>
           );
         })}
+
+        {parents.length > 0 && (
+          <Card title="Lapsevanemad">
+            <ul className="divide-y divide-slate-100">
+              {parents.map((parent) => {
+                const child = students.find((st) => st.id === parent.parent_of);
+                return (
+                  <li
+                    key={parent.id}
+                    className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{parent.full_name}</p>
+                      <p className="text-sm text-slate-500">
+                        {[emails.get(parent.id), child ? `laps: ${child.full_name}` : "pole seotud"]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {parent.parent_of && (
+                        <form action={unlinkParent}>
+                          <input type="hidden" name="id" value={parent.id} />
+                          <button className="text-sm text-slate-500 underline hover:text-red-600">
+                            Eemalda seos
+                          </button>
+                        </form>
+                      )}
+                      <form action={deleteAccount}>
+                        <input type="hidden" name="id" value={parent.id} />
+                        <button className="text-sm text-slate-500 underline hover:text-red-600">
+                          Kustuta konto
+                        </button>
+                      </form>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        )}
 
         <Card title="Materjalid kõigile">
           <div className="space-y-4">

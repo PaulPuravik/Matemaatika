@@ -108,7 +108,7 @@ export async function deleteTest(formData: FormData) {
  * the file never travels through a server action body.
  */
 export async function registerUpload(
-  sessionId: string,
+  sessionId: string | null,
   filePath: string,
   originalName: string,
 ): Promise<ActionState> {
@@ -125,11 +125,13 @@ export async function registerUpload(
 
   if (error) return { error: "Faili salvestamine ebaõnnestus." };
 
-  const { data: session } = await supabase
-    .from("sessions_public")
-    .select("scheduled_at")
-    .eq("id", sessionId)
-    .maybeSingle();
+  const { data: session } = sessionId
+    ? await supabase
+        .from("sessions_public")
+        .select("scheduled_at")
+        .eq("id", sessionId)
+        .maybeSingle()
+    : { data: null };
 
   await notifyTutor(`${profile.full_name}: uus fail`, [
     `${profile.full_name} laadis üles faili "${originalName}".`,

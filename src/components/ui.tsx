@@ -12,7 +12,7 @@ export function Card({
   action?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       {title && (
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-slate-900">{title}</h2>
@@ -43,11 +43,11 @@ export function Label({
 }
 
 export const inputClass =
-  "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm " +
+  "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base sm:text-sm shadow-sm " +
   "focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500";
 
 export const buttonClass =
-  "inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 " +
+  "inline-flex min-h-11 items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 " +
   "text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
 
 export function ErrorText({ children }: { children: React.ReactNode }) {
@@ -59,14 +59,14 @@ export function ErrorText({ children }: { children: React.ReactNode }) {
 export function PageHeader({ profile }: { profile: Profile }) {
   return (
     <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4">
+      <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-4">
         <div>
           <Link href="/" className="text-lg font-semibold">
             Matemaatika
           </Link>
-          <p className="text-sm text-slate-500">{profile.full_name}</p>
+          <p className="truncate text-sm text-slate-500">{profile.full_name}</p>
         </div>
-        <form action={signOut}>
+        <form action={signOut} className="shrink-0">
           <button className="text-sm text-slate-600 underline hover:text-slate-900">
             Logi välja
           </button>

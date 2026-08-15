@@ -179,3 +179,53 @@ async function emailStudentAboutSession(
     `Sinu järgmine tund: ${formatDateTime(new Date(scheduledAt).toISOString())}`,
   ]);
 }
+
+// ---------------------------------------------------------------------------
+// Account administration — the tutor approves, unlinks and removes accounts
+// ---------------------------------------------------------------------------
+
+export async function approveAccount(formData: FormData) {
+  await assertAdmin();
+  const id = String(formData.get("id") ?? "");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ approved: true, approved_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) {
+    console.error("Could not approve the account:", error);
+    return;
+  }
+
+  await emailStudent(id, "Sinu konto on kinnitatud", [
+    "Õpetaja kinnitas sinu konto. Nüüd saad sisse logida.",
+  ]);
+
+  revalidatePath("/admin");
+}
+
+/** Removes the account and, by cascade, everything that belonged to it. */
+export async function deleteAccount(formData: FormData) {
+  const me = await assertAdmin();
+  const id = String(formData.get("id") ?? "");
+
+  // Deleting your own account would lock you out of the app entirely.
+  if (id === me.id) return;
+
+  const { error } = await createAdminClient().auth.admin.deleteUser(id);
+  if (error) console.error("Could not delete the account:", error);
+
+  revalidatePath("/admin");
+}
+
+/** Cuts a parent loose from their child without deleting the account. */
+export async function unlinkParent(formData: FormData) {
+  await assertAdmin();
+  const id = String(formData.get("id") ?? "");
+
+  const supabase = await createClient();
+  await supabase.from("profiles").update({ parent_of: null }).eq("id", id);
+  revalidatePath("/admin");
+}

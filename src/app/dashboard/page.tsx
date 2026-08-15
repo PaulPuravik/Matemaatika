@@ -87,31 +87,28 @@ export default async function DashboardPage() {
   const pendingInvite = ((invites as ParentInvite[]) ?? [])[0] ?? null;
 
   let focusText = "";
-  let files: SessionFile[] = [];
+
+  const { data: allFiles } = await supabase
+    .from("session_files")
+    .select("*")
+    .order("uploaded_at", { ascending: false });
+  const files = (allFiles as SessionFile[]) ?? [];
 
   if (nextSession) {
-    const [{ data: focus }, { data: sessionFiles }] = await Promise.all([
-      supabase
-        .from("session_focus")
-        .select("focus_text")
-        .eq("session_id", nextSession.id)
-        .eq("student_id", profile.id)
-        .maybeSingle(),
-      supabase
-        .from("session_files")
-        .select("*")
-        .eq("session_id", nextSession.id)
-        .order("uploaded_at", { ascending: false }),
-    ]);
+    const { data: focus } = await supabase
+      .from("session_focus")
+      .select("focus_text")
+      .eq("session_id", nextSession.id)
+      .eq("student_id", profile.id)
+      .maybeSingle();
     focusText = focus?.focus_text ?? "";
-    files = (sessionFiles as SessionFile[]) ?? [];
   }
 
   return (
     <>
       <PageHeader profile={profile} />
 
-      <main className="mx-auto max-w-4xl space-y-6 px-4 py-8">
+      <main className="mx-auto max-w-4xl space-y-5 px-4 py-6 sm:space-y-6 sm:py-8">
         <Card title="Järgmine tund">
           {nextSession ? (
             <p className="text-lg font-medium">
@@ -139,15 +136,16 @@ export default async function DashboardPage() {
           )}
         </Card>
 
-        <Card title="Failid järgmiseks tunniks">
-          {nextSession ? (
-            <div className="space-y-4">
-              <Uploader sessionId={nextSession.id} studentId={profile.id} />
-              <FileList files={files} />
-            </div>
-          ) : (
-            <Empty>Faile saab lisada siis, kui järgmine tund on planeeritud.</Empty>
-          )}
+        <Card title="Failid õpetajale">
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Lisa siia see, millest tunnis kasu oleks — kodutöö, kontrolltöö
+              parandused, ülesanded, mis ei tulnud välja. Faile saab lisada ka siis,
+              kui järgmist tundi pole veel planeeritud.
+            </p>
+            <Uploader sessionId={nextSession?.id ?? null} studentId={profile.id} />
+            <FileList files={files} />
+          </div>
         </Card>
 
         <Card title="Tulevased kontrolltööd">
@@ -300,7 +298,7 @@ async function FileList({ files }: { files: SessionFile[] }) {
                 href={data?.signedUrl ?? "#"}
                 target="_blank"
                 rel="noreferrer"
-                className="text-sm underline"
+                className="min-w-0 break-words text-sm underline"
               >
                 {file.original_name}
               </a>

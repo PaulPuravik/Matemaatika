@@ -26,6 +26,10 @@ insert into auth.users (id, email, raw_user_meta_data) values
 update public.profiles set role = 'admin' where id = :admin::uuid;
 update public.profiles set role = 'parent', parent_of = :alice::uuid where id = :parent::uuid;
 
+-- These suites test behaviour after the tutor has approved everyone;
+-- approval itself is covered by approval_tests.sql.
+update public.profiles set approved = true, approved_at = now();
+
 insert into results values
   ('setup: admin role sticks',
    (select role = 'admin' from public.profiles where id = :admin::uuid)),

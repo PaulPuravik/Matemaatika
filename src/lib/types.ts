@@ -9,6 +9,8 @@ export type Profile = {
   textbook: string | null;
   school: string | null;
   parent_of: string | null;
+  approved: boolean;
+  approved_at: string | null;
   created_at: string;
 };
 
@@ -36,7 +38,8 @@ export type SessionFocus = {
 
 export type SessionFile = {
   id: string;
-  session_id: string;
+  /** null when the student attached it outside any scheduled lesson. */
+  session_id: string | null;
   student_id: string;
   file_path: string;
   original_name: string;

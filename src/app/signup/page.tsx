@@ -13,7 +13,7 @@ export default function SignupPage() {
       </div>
       <p className="mt-6 text-sm text-slate-600">
         On juba konto?{" "}
-        <Link href="/login" className="underline">
+        <Link href="/login" className="inline-block py-1 underline">
           Logi sisse
         </Link>
       </p>

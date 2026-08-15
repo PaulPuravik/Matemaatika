@@ -16,7 +16,8 @@ export default function Uploader({
   sessionId,
   studentId,
 }: {
-  sessionId: string;
+  /** null when no lesson is scheduled yet — the file still reaches the tutor. */
+  sessionId: string | null;
   studentId: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,7 +41,7 @@ export default function Uploader({
     try {
       // The storage policy requires the first path segment to be the student's
       // own id, so a student can only ever write into their own folder.
-      const path = `${studentId}/${sessionId}/${crypto.randomUUID()}.pdf`;
+      const path = `${studentId}/${sessionId ?? "general"}/${crypto.randomUUID()}.pdf`;
       const supabase = createClient();
 
       const { error: uploadError } = await supabase.storage

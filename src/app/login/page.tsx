@@ -21,7 +21,7 @@ export default async function LoginPage({
       </div>
       <p className="mt-6 text-sm text-slate-600">
         Pole veel kontot?{" "}
-        <Link href="/signup" className="underline">
+        <Link href="/signup" className="inline-block py-1 underline">
           Loo konto
         </Link>
       </p>

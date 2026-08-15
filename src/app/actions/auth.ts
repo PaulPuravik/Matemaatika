@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { homeFor } from "@/lib/auth";
+import { notifyTutor } from "@/lib/email";
 import type { UserRole } from "@/lib/types";
 
 export type FormState = { error?: string } | null;
@@ -55,11 +56,11 @@ export async function signIn(_prev: FormState, formData: FormData): Promise<Form
 
   const { data } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, approved")
     .eq("id", auth.user.id)
     .single();
 
-  redirect(homeFor((data?.role as UserRole) ?? "student"));
+  redirect(homeFor((data?.role as UserRole) ?? "student", data?.approved ?? false));
 }
 
 export async function signUp(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -100,6 +101,13 @@ export async function signUp(_prev: FormState, formData: FormData): Promise<Form
 
   if (error) return { error: error.message };
 
+  await notifyTutor("Uus konto ootab kinnitust", [
+    `${fullName} lõi konto (${isParent ? "lapsevanem" : "õpilane"}).`,
+    `E-post: ${email}`,
+    "",
+    "Konto ei pääse andmetele ligi enne, kui sa selle kinnitad.",
+  ]);
+
   if (!data.session) {
     redirect("/login?confirm=1");
   }
@@ -107,10 +115,9 @@ export async function signUp(_prev: FormState, formData: FormData): Promise<Form
   if (isParent) {
     const inviteError = await redeemPendingInvite();
     if (inviteError) redirect("/liitu?error=" + encodeURIComponent(inviteError));
-    redirect("/parent");
   }
 
-  redirect("/dashboard");
+  redirect("/ootel");
 }
 
 /** Manual code entry, for a parent whose code did not go through at signup. */

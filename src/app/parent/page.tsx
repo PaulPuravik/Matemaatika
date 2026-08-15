@@ -81,7 +81,7 @@ export default async function ParentPage() {
     <>
       <PageHeader profile={profile} />
 
-      <main className="mx-auto max-w-4xl space-y-6 px-4 py-8">
+      <main className="mx-auto max-w-4xl space-y-5 px-4 py-6 sm:space-y-6 sm:py-8">
         <Card title={(child as Profile | null)?.full_name ?? "Õpilane"}>
           <Empty>Ülevaade. Muudatusi saab teha õpilane ise.</Empty>
         </Card>

@@ -27,11 +27,19 @@ export async function getProfile(): Promise<Profile | null> {
 export async function requireRole(...roles: UserRole[]): Promise<Profile> {
   const profile = await getProfile();
   if (!profile) redirect("/login");
+  // Every account waits for the tutor. RLS enforces this too; the redirect is
+  // just so the person sees an explanation instead of an empty page.
+  if (!profile.approved && profile.role !== "admin") redirect("/ootel");
   if (!roles.includes(profile.role)) redirect(homeFor(profile.role));
   return profile;
 }
 
-export function homeFor(role: UserRole): string {
+export function homeFor(role: UserRole, approved = true): string {
+  if (!approved && role !== "admin") return "/ootel";
+  return roleHome(role);
+}
+
+function roleHome(role: UserRole): string {
   switch (role) {
     case "admin":
       return "/admin";

@@ -36,8 +36,8 @@ two and not the third.
 
 Create a project, then run the files in `supabase/migrations/` in order
 (`0001_init.sql`, `0002_school_and_parent_invites.sql`,
-`0003_grades_and_private_materials.sql`, `0004_lesson_summary_and_homework.sql`)
-in the SQL editor.
+`0003_grades_and_private_materials.sql`, `0004_lesson_summary_and_homework.sql`,
+`0005_approvals_and_account_admin.sql`) in the SQL editor.
 They create the tables, RLS policies, the two storage buckets (both private),
 the trigger that turns a signup into a `profiles` row, and the parent-invite
 functions.
@@ -52,14 +52,40 @@ exclusively from server actions and route handlers, never from client components
 
 ### 3. Make yourself the admin
 
-Sign up through the app, then in the Supabase SQL editor:
+The tutor is identified by email. Set yours once:
 
 ```sql
-update public.profiles set role = 'admin'
+update public.app_settings set value = 'sinu@email.ee' where key = 'tutor_email';
+```
+
+Then sign up through the app with that address — the account is created as the
+admin and is approved automatically. Set `TUTOR_NOTIFICATION_EMAIL` to the same
+address so notifications reach you.
+
+If you signed up before setting the row, fix it directly:
+
+```sql
+update public.profiles set role = 'admin', approved = true
 where id = (select id from auth.users where email = 'sinu@email.ee');
 ```
 
-### 4. Parent accounts
+### 4. Approving accounts
+
+Every account — student and parent alike — is created unapproved and can reach
+nothing until you approve it. Unapproved users see a waiting page, and RLS
+refuses their reads and writes regardless of what the UI does, so the block is
+real rather than cosmetic. New signups appear at the top of `/admin` under
+**Ootab kinnitust**, with **Kinnita** and **Kustuta**; you also get an email.
+
+`approved` is a privileged column like `role` and `parent_of`: the trigger
+reverts any attempt to set it from a normal account, so nobody can approve
+themselves.
+
+From `/admin` you can also delete any student or parent account (which removes
+their data by cascade) and unlink a parent from their child without deleting the
+account.
+
+### 5. Parent accounts
 
 Parents are linked by the student, not by you and not by themselves. On their
 dashboard a student opens **Vanema ligipääs** and generates an 8-character code
@@ -77,7 +103,7 @@ cannot re-point themselves at a different child.
 You can still assign roles directly in SQL when you need to — a connection with
 no end-user (the SQL editor, the service role) is trusted.
 
-### 5. Run it
+### 6. Run it
 
 ```bash
 npm install
@@ -88,9 +114,11 @@ npm run dev
 
 Files move in both directions, and both are per student:
 
-- **Student → tutor.** Uploads attach to a session and land in Supabase Storage
-  under `student-files/<student_id>/<session_id>/`, so the storage policy alone
-  keeps one student out of another's folder. The admin view lists them grouped
+- **Student → tutor.** Uploads can be made at any time, whether or not a lesson
+  is scheduled — files without a lesson carry a null `session_id` and land under
+  `general/`. They go to Supabase Storage
+  under `student-files/<student_id>/…`, so the storage policy alone keeps one
+  student out of another's folder. The admin view lists them grouped
   under the student who sent them.
 - **Tutor → student.** A material with `student_id` set is visible only to that
   student (and their linked parent); with it null it is shared with everyone.
@@ -127,7 +155,7 @@ objects (`auth.uid()`, `auth.users`, `storage`) so the migration runs unmodified
 supabase/tests/run.sh -h /tmp -p 5433 -U postgres
 ```
 
-91 checks in four suites:
+110 checks in five suites:
 
 - `rls_tests.sql` — student isolation, cross-student write attempts, privilege
   escalation, parent read-only access, admin access, storage path rules.
@@ -141,6 +169,9 @@ supabase/tests/run.sh -h /tmp -p 5433 -U postgres
 - `lesson_notes_tests.sql` — the student and parent can read a lesson's summary
   and homework but not the tutor's private notes, and the student cannot rewrite
   what the tutor recorded.
+- `approval_tests.sql` — an unapproved account can read its own profile and
+  nothing else, cannot write anything, cannot approve itself, and a parent
+  holding a valid invite code is linked but still sees nothing until approved.
 
 ```bash
 npm run typecheck   # tsc
@@ -172,3 +203,8 @@ students and parents only read them. There is no booking, no payments and no
 scheduling logic.
 
 The interface is in Estonian; all code and comments are in English.
+
+Most students open this on a phone, so the layout is built mobile-first: inputs
+render at 16px on small screens (below that, iOS zooms the page on focus), tap
+targets clear 44px, and the dashboard and admin pages were checked at 390px wide
+for horizontal overflow.
