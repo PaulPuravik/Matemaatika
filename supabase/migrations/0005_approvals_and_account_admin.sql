@@ -26,7 +26,7 @@ create policy "settings writable by admin"
   with check (public.is_admin());
 
 insert into public.app_settings (key, value)
-values ('tutor_email', 'info@autoly.ee')
+values ('tutor_email', 'rtubarik@gmail.com')
 on conflict (key) do nothing;
 
 -- ---------------------------------------------------------------------------

@@ -52,13 +52,14 @@ exclusively from server actions and route handlers, never from client components
 
 ### 3. Make yourself the admin
 
-The tutor is identified by email. Set yours once:
+The tutor is identified by email. `0005` seeds it to `rtubarik@gmail.com`; to
+use a different address, change the row:
 
 ```sql
 update public.app_settings set value = 'sinu@email.ee' where key = 'tutor_email';
 ```
 
-Then sign up through the app with that address — the account is created as the
+Sign up through the app with that address — the account is created as the
 admin and is approved automatically. Set `TUTOR_NOTIFICATION_EMAIL` to the same
 address so notifications reach you.
 
