@@ -2,6 +2,7 @@ import "server-only";
 
 import { JWT } from "google-auth-library";
 import type { CalendarEvent } from "@/lib/calendar";
+import { normalizePrivateKey } from "@/lib/pem";
 
 /**
  * Reads the tutor's Google Calendar with a service account.
@@ -22,9 +23,7 @@ export function isCalendarConfigured(): boolean {
 function client(): JWT {
   return new JWT({
     email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    // Vercel stores the key as a single line, so the escaped newlines have to
-    // be turned back into real ones before the PEM parses.
-    key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    key: normalizePrivateKey(process.env.GOOGLE_PRIVATE_KEY),
     scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
   });
 }
@@ -98,8 +97,22 @@ export async function fetchEvents(
         error: "Google keeldus ligipääsust. Kas Calendar API on projektis sisse lülitatud?",
       };
     }
-    if (message.toLowerCase().includes("invalid_grant") || message.includes("PEM")) {
-      return { ok: false, error: "Teenusekonto võti on vigane. Kontrolli GOOGLE_PRIVATE_KEY." };
+    if (message.includes("DECODER") || message.includes("PEM")) {
+      return {
+        ok: false,
+        error:
+          "GOOGLE_PRIVATE_KEY ei ole loetav võti. Kopeeri JSON-ist private_key " +
+          "väärtus ilma väliste jutumärkideta ja veendu, et algus on " +
+          "-----BEGIN PRIVATE KEY-----.",
+      };
+    }
+    if (message.toLowerCase().includes("invalid_grant")) {
+      return {
+        ok: false,
+        error:
+          "Google ei aktsepteerinud võtit. Kas teenusekonto on kustutatud või " +
+          "võti tühistatud?",
+      };
     }
     return { ok: false, error: `Kalendri lugemine ebaõnnestus: ${message}` };
   }

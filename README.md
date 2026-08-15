@@ -150,6 +150,11 @@ those after 7 days while an app sits in "Testing".
 Events are fetched with `singleEvents=true`, so Google expands a weekly lesson
 into individual occurrences and no recurrence rules are interpreted here.
 
+`GOOGLE_PRIVATE_KEY` is copied out of a JSON file into a dashboard field by
+hand, so `src/lib/pem.ts` accepts it with the JSON quotes still attached, with
+`\n` left as two characters, or with Windows line endings. All three otherwise
+fail with the same opaque `DECODER routines::unsupported`.
+
 Matching lives in `src/lib/calendar.ts` and is deliberately conservative:
 
 - an event needs the keyword (`calendar_keyword` in `app_settings`, default
@@ -209,7 +214,7 @@ supabase/tests/run.sh -h /tmp -p 5433 -U postgres
 ```bash
 npm run typecheck   # tsc
 npm run build       # production build
-npm run test:calendar   # 20 checks on the calendar name matching
+npm test                # calendar name matching + private key normalising
 ```
 
 ## Layout

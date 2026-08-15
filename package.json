@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:calendar": "node --experimental-strip-types tests/calendar.test.ts"
+    "test:calendar": "node --experimental-strip-types tests/calendar.test.ts",
+    "test:key": "node --experimental-strip-types tests/private-key.test.ts",
+    "test": "npm run test:calendar && npm run test:key"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
