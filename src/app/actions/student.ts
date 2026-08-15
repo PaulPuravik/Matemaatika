@@ -192,3 +192,49 @@ export async function revokeParentAccess(formData: FormData) {
   await supabase.rpc("revoke_parent_access", { p_parent: parentId });
   revalidatePath("/dashboard");
 }
+
+export async function addGrade(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const subject = String(formData.get("subject") ?? "").trim();
+  const mark = String(formData.get("mark") ?? "").trim();
+  const receivedOn = String(formData.get("received_on") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!subject) return { error: "Sisesta aine või teema." };
+  if (!mark) return { error: "Sisesta hinne." };
+
+  const profile = await getProfile();
+  if (!profile) return { error: "Sessioon on aegunud. Logi uuesti sisse." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("grades").insert({
+    student_id: profile.id,
+    subject,
+    mark,
+    received_on: receivedOn || new Date().toISOString().slice(0, 10),
+    notes: notes || null,
+  });
+
+  if (error) return { error: "Salvestamine ebaõnnestus." };
+
+  await notifyTutor(`${profile.full_name}: uus hinne`, [
+    `${profile.full_name} lisas hinde.`,
+    "",
+    `Aine: ${subject}`,
+    `Hinne: ${mark}`,
+    `Kuupäev: ${formatDate(receivedOn || new Date().toISOString().slice(0, 10))}`,
+    ...(notes ? ["", `Märkused: ${notes}`] : []),
+  ]);
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function deleteGrade(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const supabase = await createClient();
+  await supabase.from("grades").delete().eq("id", id);
+  revalidatePath("/dashboard");
+}

@@ -33,7 +33,8 @@ that column.
 ### 1. Supabase
 
 Create a project, then run the files in `supabase/migrations/` in order
-(`0001_init.sql`, then `0002_school_and_parent_invites.sql`) in the SQL editor.
+(`0001_init.sql`, `0002_school_and_parent_invites.sql`,
+`0003_grades_and_private_materials.sql`) in the SQL editor.
 They create the tables, RLS policies, the two storage buckets (both private),
 the trigger that turns a signup into a `profiles` row, and the parent-invite
 functions.
@@ -80,11 +81,29 @@ npm install
 npm run dev
 ```
 
+## Files and grades
+
+Files move in both directions, and both are per student:
+
+- **Student → tutor.** Uploads attach to a session and land in Supabase Storage
+  under `student-files/<student_id>/<session_id>/`, so the storage policy alone
+  keeps one student out of another's folder. The admin view lists them grouped
+  under the student who sent them.
+- **Tutor → student.** A material with `student_id` set is visible only to that
+  student (and their linked parent); with it null it is shared with everyone.
+  The object key carries the same split — `materials/<student_id>/…` versus
+  `materials/shared/…` — so the storage policy matches the row policy.
+
+Students enter their own **grades** (subject, mark, date, optional note). The
+mark is free text so `5`, `4+`, `arvestatud` and `87%` all fit. The tutor and
+the linked parent can read them; only the student can add or remove them.
+
 ## Email notifications
 
 Sent from server-side code via Resend. The tutor is notified when a student
-adds or edits their focus note, uploads a PDF, or adds an upcoming test. The
-student is emailed when the tutor schedules a session or moves it to a new time.
+adds or edits their focus note, uploads a PDF, adds an upcoming test, or
+records a grade. The student is emailed when the tutor schedules a session,
+moves it to a new time, or shares a file with them personally.
 
 Sending is best-effort by design — if Resend is unconfigured or failing, the
 student's upload still succeeds and the failure is logged instead of surfacing
@@ -100,12 +119,17 @@ objects (`auth.uid()`, `auth.users`, `storage`) so the migration runs unmodified
 supabase/tests/run.sh -h /tmp -p 5433 -U postgres
 ```
 
-55 checks in two suites. `rls_tests.sql` covers student isolation, cross-student
-write attempts, privilege escalation, parent read-only access, admin access and
-the storage path rules. `parent_invite_tests.sql` covers the invite flow: codes
-are single-use and expiring, outsiders cannot read or reuse them, a student
-cannot accept their own, a parent cannot switch children or issue invites, and
-revoking really cuts access.
+77 checks in three suites:
+
+- `rls_tests.sql` — student isolation, cross-student write attempts, privilege
+  escalation, parent read-only access, admin access, storage path rules.
+- `parent_invite_tests.sql` — codes are single-use and expiring, outsiders
+  cannot read or reuse them, a student cannot accept their own, a parent cannot
+  switch children or issue invites, and revoking really cuts access.
+- `grades_and_materials_tests.sql` — a student cannot read or write another
+  student's grades, a parent can read but not change them, and a material aimed
+  at one student is invisible to every other student, both as a row and as a
+  storage object.
 
 ```bash
 npm run typecheck   # tsc
@@ -119,13 +143,13 @@ src/app/gate         shared password screen + its route handler
 src/app/login        Supabase email/password sign-in
 src/app/signup       sign-up as student (name, grade, textbook, school) or parent (invite code)
 src/app/liitu        manual invite-code entry, for a parent whose code needs re-trying
-src/app/dashboard    student: next session, focus note, PDF upload, tests, materials
+src/app/dashboard    student: next session, focus note, PDF upload, tests, grades, materials
 src/app/parent       parent: read-only view of their child
-src/app/admin        tutor: all students, sessions, files, materials
+src/app/admin        tutor: all students, sessions, files, grades, per-student and shared materials
 src/app/actions      server actions (auth, student, admin)
 src/lib              Supabase clients, gate, email, formatting, types
 src/middleware.ts    enforces the gate, refreshes the Supabase session
-supabase/migrations  schema, RLS policies, storage policies, parent invites
+supabase/migrations  schema, RLS policies, storage policies, parent invites, grades
 supabase/tests       RLS test suite
 ```
 

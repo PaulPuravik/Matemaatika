@@ -94,11 +94,16 @@ export async function deleteSession(formData: FormData) {
   revalidatePath("/admin");
 }
 
+/**
+ * Records a material. `studentId` null shares it with everyone; set, and only
+ * that student (and their parent) can see it.
+ */
 export async function registerMaterial(
   title: string,
   filePath: string,
   grade: string,
   topic: string,
+  studentId?: string | null,
 ): Promise<ActionState> {
   await assertAdmin();
 
@@ -108,9 +113,23 @@ export async function registerMaterial(
     file_path: filePath,
     grade: grade || null,
     topic: topic || null,
+    student_id: studentId || null,
   });
 
   if (error) return { error: error.message };
+
+  if (studentId) {
+    try {
+      const { data } = await createAdminClient().auth.admin.getUserById(studentId);
+      if (data.user?.email) {
+        await notifyStudent(data.user.email, "Õpetaja jagas sinuga faili", [
+          `Sinu jaoks on uus materjal: ${title}`,
+        ]);
+      }
+    } catch (error) {
+      console.error("Could not email the student about the material:", error);
+    }
+  }
 
   revalidatePath("/admin");
   revalidatePath("/dashboard");

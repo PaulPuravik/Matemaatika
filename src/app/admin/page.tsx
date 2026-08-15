@@ -5,6 +5,7 @@ import { Card, Empty, PageHeader } from "@/components/ui";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { deleteMaterial, deleteSession } from "@/app/actions/admin";
 import type {
+  Grade,
   Material,
   Profile,
   SessionFile,
@@ -22,13 +23,14 @@ export default async function AdminPage() {
   const supabase = await createClient();
 
   const [{ data: profiles }, { data: sessions }, { data: focus }, { data: files },
-    { data: tests }, { data: materials }] = await Promise.all([
+    { data: tests }, { data: materials }, { data: grades }] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name"),
     supabase.from("sessions").select("*").order("scheduled_at", { ascending: true }),
     supabase.from("session_focus").select("*"),
     supabase.from("session_files").select("*").order("uploaded_at", { ascending: false }),
     supabase.from("tests").select("*").order("test_date", { ascending: true }),
     supabase.from("materials").select("*").order("created_at", { ascending: false }),
+    supabase.from("grades").select("*").order("received_on", { ascending: false }),
   ]);
 
   const students = ((profiles as Profile[]) ?? []).filter((p) => p.role === "student");
@@ -39,6 +41,9 @@ export default async function AdminPage() {
   const allFocus = (focus as SessionFocus[]) ?? [];
   const allFiles = (files as SessionFile[]) ?? [];
   const allTests = (tests as Test[]) ?? [];
+  const allGrades = (grades as Grade[]) ?? [];
+  const allMaterials = (materials as Material[]) ?? [];
+  const sharedMaterials = allMaterials.filter((m) => !m.student_id);
   const now = Date.now();
 
   return (
@@ -107,10 +112,47 @@ export default async function AdminPage() {
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-semibold text-slate-700">Failid</h3>
+                  <h3 className="text-sm font-semibold text-slate-700">
+                    Tema jagatud failid
+                  </h3>
                   <AdminFileList
                     files={allFiles.filter((f) => f.student_id === student.id)}
                   />
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700">Hinded</h3>
+                  {allGrades.filter((g) => g.student_id === student.id).length > 0 ? (
+                    <ul className="text-sm">
+                      {allGrades
+                        .filter((g) => g.student_id === student.id)
+                        .map((grade) => (
+                          <li key={grade.id}>
+                            {formatDate(grade.received_on)} — {grade.subject}:{" "}
+                            <strong>{grade.mark}</strong>
+                            {grade.notes && (
+                              <span className="text-slate-500"> ({grade.notes})</span>
+                            )}
+                          </li>
+                        ))}
+                    </ul>
+                  ) : (
+                    <Empty>Hindeid pole lisatud.</Empty>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold text-slate-700">
+                    Jaga fail ainult temaga
+                  </h3>
+                  <div className="space-y-3">
+                    <MaterialUploader studentId={student.id} />
+                    <StudentMaterials
+                      materials={allMaterials.filter(
+                        (m) => m.student_id === student.id,
+                      )}
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -161,12 +203,12 @@ export default async function AdminPage() {
           );
         })}
 
-        <Card title="Materjalid">
+        <Card title="Materjalid kõigile">
           <div className="space-y-4">
             <MaterialUploader />
-            {materials && materials.length > 0 ? (
+            {sharedMaterials.length > 0 ? (
               <ul className="divide-y divide-slate-100">
-                {(materials as Material[]).map((material) => (
+                {sharedMaterials.map((material) => (
                   <li
                     key={material.id}
                     className="flex items-center justify-between gap-4 py-2"
@@ -194,6 +236,27 @@ export default async function AdminPage() {
         </Card>
       </main>
     </>
+  );
+}
+
+function StudentMaterials({ materials }: { materials: Material[] }) {
+  if (materials.length === 0) return <Empty>Sellele õpilasele pole faile jagatud.</Empty>;
+
+  return (
+    <ul className="divide-y divide-slate-100">
+      {materials.map((material) => (
+        <li key={material.id} className="flex items-center justify-between gap-4 py-2">
+          <span className="text-sm">{material.title}</span>
+          <form action={deleteMaterial}>
+            <input type="hidden" name="id" value={material.id} />
+            <input type="hidden" name="path" value={material.file_path} />
+            <button className="text-sm text-slate-500 underline hover:text-red-600">
+              Kustuta
+            </button>
+          </form>
+        </li>
+      ))}
+    </ul>
   );
 }
 

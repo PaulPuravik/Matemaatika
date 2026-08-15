@@ -2,7 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import { formatDate, formatDateTime } from "@/lib/format";
-import type { Profile, PublicSession, Test } from "@/lib/types";
+import type { Grade, Profile, PublicSession, Test } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +50,12 @@ export default async function ParentPage() {
     .gte("test_date", new Date().toISOString().slice(0, 10))
     .order("test_date", { ascending: true });
 
+  const { data: grades } = await supabase
+    .from("grades")
+    .select("*")
+    .eq("student_id", profile.parent_of)
+    .order("received_on", { ascending: false });
+
   let focusText: string | null = null;
   if (nextSession) {
     const { data: focus } = await supabase
@@ -84,6 +90,31 @@ export default async function ParentPage() {
             <p className="whitespace-pre-line text-sm">{focusText}</p>
           ) : (
             <Empty>Pole veel kirjutatud.</Empty>
+          )}
+        </Card>
+
+        <Card title="Hinded">
+          {grades && grades.length > 0 ? (
+            <ul className="divide-y divide-slate-100">
+              {(grades as Grade[]).map((grade) => (
+                <li key={grade.id} className="flex items-start gap-3 py-2">
+                  <span className="min-w-8 rounded-md bg-slate-100 px-2 py-1 text-center text-sm font-semibold">
+                    {grade.mark}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium">{grade.subject}</p>
+                    <p className="text-sm text-slate-500">
+                      {formatDate(grade.received_on)}
+                    </p>
+                    {grade.notes && (
+                      <p className="mt-1 text-sm text-slate-600">{grade.notes}</p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty>Ühtegi hinnet pole lisatud.</Empty>
           )}
         </Card>
 

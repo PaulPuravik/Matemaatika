@@ -55,6 +55,18 @@ export type Material = {
   file_path: string;
   grade: string | null;
   topic: string | null;
+  /** null = shared with everyone; set = visible only to that student. */
+  student_id: string | null;
+  created_at: string;
+};
+
+export type Grade = {
+  id: string;
+  student_id: string;
+  subject: string;
+  mark: string;
+  received_on: string;
+  notes: string | null;
   created_at: string;
 };
 

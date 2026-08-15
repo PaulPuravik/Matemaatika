@@ -5,10 +5,12 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import {
   cancelParentInvite,
   deleteFile,
+  deleteGrade,
   deleteTest,
   revokeParentAccess,
 } from "@/app/actions/student";
 import type {
+  Grade,
   Material,
   ParentInvite,
   Profile,
@@ -20,6 +22,7 @@ import FocusForm from "./FocusForm";
 import TestForm from "./TestForm";
 import Uploader from "./Uploader";
 import ParentAccess from "./ParentAccess";
+import GradeForm from "./GradeForm";
 
 export const dynamic = "force-dynamic";
 
@@ -38,8 +41,13 @@ export default async function DashboardPage() {
 
   const nextSession = (sessions?.[0] as PublicSession) ?? null;
 
-  const [{ data: tests }, { data: materials }, { data: parents }, { data: invites }] =
-    await Promise.all([
+  const [
+    { data: tests },
+    { data: materials },
+    { data: grades },
+    { data: parents },
+    { data: invites },
+  ] = await Promise.all([
     supabase
       .from("tests")
       .select("*")
@@ -50,6 +58,11 @@ export default async function DashboardPage() {
       .from("materials")
       .select("*")
       .order("created_at", { ascending: false }),
+    supabase
+      .from("grades")
+      .select("*")
+      .eq("student_id", profile.id)
+      .order("received_on", { ascending: false }),
     supabase.from("profiles").select("*").eq("parent_of", profile.id),
     supabase
       .from("parent_invites")
@@ -149,6 +162,45 @@ export default async function DashboardPage() {
               </ul>
             ) : (
               <Empty>Ühtegi kontrolltööd pole lisatud.</Empty>
+            )}
+          </div>
+        </Card>
+
+        <Card title="Minu hinded">
+          <div className="space-y-4">
+            <GradeForm />
+            {grades && grades.length > 0 ? (
+              <ul className="divide-y divide-slate-100">
+                {(grades as Grade[]).map((grade) => (
+                  <li
+                    key={grade.id}
+                    className="flex items-start justify-between gap-4 py-2"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="min-w-8 rounded-md bg-slate-100 px-2 py-1 text-center text-sm font-semibold">
+                        {grade.mark}
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium">{grade.subject}</p>
+                        <p className="text-sm text-slate-500">
+                          {formatDate(grade.received_on)}
+                        </p>
+                        {grade.notes && (
+                          <p className="mt-1 text-sm text-slate-600">{grade.notes}</p>
+                        )}
+                      </div>
+                    </div>
+                    <form action={deleteGrade}>
+                      <input type="hidden" name="id" value={grade.id} />
+                      <button className="text-sm text-slate-500 underline hover:text-red-600">
+                        Kustuta
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Empty>Ühtegi hinnet pole veel lisatud.</Empty>
             )}
           </div>
         </Card>
@@ -268,6 +320,11 @@ async function MaterialList({ materials }: { materials: Material[] }) {
               >
                 {material.title}
               </a>
+              {material.student_id && (
+                <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                  ainult sulle
+                </span>
+              )}
               <p className="text-sm text-slate-500">
                 {[material.grade, material.topic].filter(Boolean).join(" · ")}
               </p>

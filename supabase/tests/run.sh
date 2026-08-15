@@ -30,3 +30,10 @@ for m in "$HERE"/../migrations/*.sql; do run "$m"; done
 
 echo "=== parent invites ==="
 psql "${PSQL_ARGS[@]}" -d "$DB" -q -f "$HERE/parent_invite_tests.sql"
+
+psql "${PSQL_ARGS[@]}" -q -c "drop database if exists $DB;" -c "create database $DB;"
+run "$HERE/supabase_stub.sql"
+for m in "$HERE"/../migrations/*.sql; do run "$m"; done
+
+echo "=== grades and per-student materials ==="
+psql "${PSQL_ARGS[@]}" -d "$DB" -q -f "$HERE/grades_and_materials_tests.sql"

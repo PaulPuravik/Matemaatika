@@ -8,8 +8,13 @@ import { buttonClass, ErrorText, inputClass, Label } from "@/components/ui";
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
-/** Uploads a shared PDF straight to the materials bucket, then records it. */
-export default function MaterialUploader() {
+/**
+ * Uploads a PDF straight to the materials bucket, then records it. With a
+ * `studentId` the file goes into that student's folder and only they can read
+ * it; without one it lands under shared/ and everyone can.
+ */
+export default function MaterialUploader({ studentId }: { studentId?: string }) {
+  const titleId = `material-title-${studentId ?? "shared"}`;
   const formRef = useRef<HTMLFormElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +35,7 @@ export default function MaterialUploader() {
 
     setBusy(true);
     try {
-      const path = `${crypto.randomUUID()}.pdf`;
+      const path = `${studentId ?? "shared"}/${crypto.randomUUID()}.pdf`;
       const supabase = createClient();
 
       const { error: uploadError } = await supabase.storage
@@ -44,6 +49,7 @@ export default function MaterialUploader() {
         path,
         String(form.get("grade") ?? "").trim(),
         String(form.get("topic") ?? "").trim(),
+        studentId ?? null,
       );
       if (result?.error) return setError(result.error);
 
@@ -56,19 +62,23 @@ export default function MaterialUploader() {
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className={studentId ? "grid gap-3" : "grid gap-3 sm:grid-cols-3"}>
         <div>
-          <Label htmlFor="material-title">Pealkiri</Label>
-          <input id="material-title" name="title" required className={inputClass} />
+          <Label htmlFor={titleId}>Pealkiri</Label>
+          <input id={titleId} name="title" required className={inputClass} />
         </div>
-        <div>
-          <Label htmlFor="material-grade">Klass</Label>
-          <input id="material-grade" name="grade" className={inputClass} />
-        </div>
-        <div>
-          <Label htmlFor="material-topic">Teema</Label>
-          <input id="material-topic" name="topic" className={inputClass} />
-        </div>
+        {!studentId && (
+          <>
+            <div>
+              <Label htmlFor="material-grade">Klass</Label>
+              <input id="material-grade" name="grade" className={inputClass} />
+            </div>
+            <div>
+              <Label htmlFor="material-topic">Teema</Label>
+              <input id="material-topic" name="topic" className={inputClass} />
+            </div>
+          </>
+        )}
       </div>
       <input
         type="file"
@@ -78,7 +88,7 @@ export default function MaterialUploader() {
       />
       {error && <ErrorText>{error}</ErrorText>}
       <button disabled={busy} className={buttonClass}>
-        {busy ? "Laadin üles…" : "Lisa materjal"}
+        {busy ? "Laadin üles…" : studentId ? "Jaga fail" : "Lisa materjal"}
       </button>
     </form>
   );
