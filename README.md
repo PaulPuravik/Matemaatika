@@ -1,4 +1,4 @@
-# Matemaatika — private tutoring hub
+# Raul Tubariku eratunnid — private tutoring hub
 
 A small, password-protected hub for one-on-one math tutoring. Students see their
 next session, say what they want to work on, upload PDFs and track upcoming
@@ -236,7 +236,9 @@ This is a v1 for a handful of users. Uploads are PDF-only and capped client-side
 students and parents only read them. There is no booking, no payments and no
 scheduling logic.
 
-The interface is in Estonian; all code and comments are in English.
+The interface is in Estonian; all code and comments are in English. The name
+shown to users lives in `src/lib/branding.ts` — change it there and it updates
+the header, the password screen and the browser tab together.
 
 Most students open this on a phone, so the layout is built mobile-first: inputs
 render at 16px on small screens (below that, iOS zooms the page on focus), tap

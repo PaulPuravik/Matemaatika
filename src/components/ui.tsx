@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { signOut } from "@/app/actions/auth";
+import { APP_NAME } from "@/lib/branding";
 import type { Profile } from "@/lib/types";
 
 export function Card({
@@ -60,9 +61,9 @@ export function PageHeader({ profile }: { profile: Profile }) {
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-4">
-        <div>
-          <Link href="/" className="text-lg font-semibold">
-            Matemaatika
+        <div className="min-w-0">
+          <Link href="/" className="block truncate text-lg font-semibold">
+            {APP_NAME}
           </Link>
           <p className="truncate text-sm text-slate-500">{profile.full_name}</p>
         </div>

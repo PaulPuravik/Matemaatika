@@ -1,4 +1,5 @@
 import { buttonClass, ErrorText, inputClass, Label } from "@/components/ui";
+import { APP_NAME } from "@/lib/branding";
 
 export default async function GatePage({
   searchParams,
@@ -9,7 +10,7 @@ export default async function GatePage({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
-      <h1 className="text-2xl font-semibold">Matemaatika</h1>
+      <h1 className="text-2xl font-semibold text-balance">{APP_NAME}</h1>
       <p className="mt-1 mb-6 text-sm text-slate-600">
         Sisesta ühine parool, et jätkata.
       </p>

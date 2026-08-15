@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { APP_NAME } from "@/lib/branding";
 
 // Most students open this on a phone.
 export const viewport: Viewport = {
@@ -9,7 +10,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Matemaatika",
+  title: APP_NAME,
   description: "Eratunnid — sinu järgmine tund, tööd ja materjalid",
 };
 
