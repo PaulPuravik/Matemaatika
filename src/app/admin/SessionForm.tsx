@@ -70,6 +70,37 @@ export default function SessionForm({
         )}
       </div>
 
+      {session && (
+        <>
+          <div>
+            <Label htmlFor={`summary-${session.id}`}>
+              Mida tegime (õpilane ja vanem näevad)
+            </Label>
+            <textarea
+              id={`summary-${session.id}`}
+              name="summary"
+              rows={2}
+              defaultValue={session.summary ?? ""}
+              placeholder="nt kordasime logaritme, tegime kontrolltöö vead läbi"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`homework-${session.id}`}>
+              Kodutöö (õpilane ja vanem näevad)
+            </Label>
+            <textarea
+              id={`homework-${session.id}`}
+              name="homework"
+              rows={2}
+              defaultValue={session.homework ?? ""}
+              placeholder="nt lk 84 ülesanded 1-6"
+              className={inputClass}
+            />
+          </div>
+        </>
+      )}
+
       <div>
         <Label htmlFor={`notes-${session?.id ?? "new"}`}>Minu märkmed (privaatsed)</Label>
         <textarea

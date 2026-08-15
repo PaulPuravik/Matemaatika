@@ -59,9 +59,12 @@ export async function updateSession(
   if (!id || !scheduledAt) return { error: "Puuduvad andmed." };
 
   const supabase = await createClient();
+  const summary = String(formData.get("summary") ?? "").trim();
+  const homework = String(formData.get("homework") ?? "").trim();
+
   const { data: before } = await supabase
     .from("sessions")
-    .select("student_id, scheduled_at")
+    .select("student_id, scheduled_at, homework")
     .eq("id", id)
     .single();
 
@@ -71,6 +74,8 @@ export async function updateSession(
       scheduled_at: new Date(scheduledAt).toISOString(),
       status,
       tutor_notes: tutorNotes || null,
+      summary: summary || null,
+      homework: homework || null,
     })
     .eq("id", id);
 
@@ -80,6 +85,13 @@ export async function updateSession(
     before && new Date(before.scheduled_at).getTime() !== new Date(scheduledAt).getTime();
   if (moved) {
     await emailStudentAboutSession(before.student_id, scheduledAt, "Tunni aeg muutus");
+  }
+
+  if (before && homework && homework !== (before.homework ?? "")) {
+    await emailStudent(before.student_id, "Uus kodutöö", [
+      `Kodutöö: ${homework}`,
+      ...(summary ? ["", `Tunnis tegime: ${summary}`] : []),
+    ]);
   }
 
   revalidatePath("/admin");
@@ -148,24 +160,22 @@ export async function deleteMaterial(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
-/**
- * Optional courtesy email to the student. Their address lives in auth.users,
- * which only the service role can read.
- */
+/** Their address lives in auth.users, which only the service role can read. */
+async function emailStudent(studentId: string, subject: string, lines: string[]) {
+  try {
+    const { data } = await createAdminClient().auth.admin.getUserById(studentId);
+    if (data.user?.email) await notifyStudent(data.user.email, subject, lines);
+  } catch (error) {
+    console.error("Could not email the student:", error);
+  }
+}
+
 async function emailStudentAboutSession(
   studentId: string,
   scheduledAt: string,
   subject: string,
 ) {
-  try {
-    const { data } = await createAdminClient().auth.admin.getUserById(studentId);
-    const email = data.user?.email;
-    if (!email) return;
-
-    await notifyStudent(email, subject, [
-      `Sinu järgmine tund: ${formatDateTime(new Date(scheduledAt).toISOString())}`,
-    ]);
-  } catch (error) {
-    console.error("Could not email the student about their session:", error);
-  }
+  await emailStudent(studentId, subject, [
+    `Sinu järgmine tund: ${formatDateTime(new Date(scheduledAt).toISOString())}`,
+  ]);
 }

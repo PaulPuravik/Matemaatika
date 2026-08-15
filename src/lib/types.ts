@@ -19,6 +19,9 @@ export type PublicSession = {
   scheduled_at: string;
   status: SessionStatus;
   created_at: string;
+  /** What was covered in the lesson. Written by the tutor, read by both. */
+  summary: string | null;
+  homework: string | null;
 };
 
 export type TutorSession = PublicSession & { tutor_notes: string | null };

@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, Empty, PageHeader } from "@/components/ui";
+import { LessonHistory } from "@/components/LessonHistory";
 import { formatDate, formatDateTime } from "@/lib/format";
 import {
   cancelParentInvite,
@@ -34,12 +35,23 @@ export default async function DashboardPage() {
     .from("sessions_public")
     .select("*")
     .eq("student_id", profile.id)
-    .eq("status", "upcoming")
-    .gte("scheduled_at", new Date().toISOString())
-    .order("scheduled_at", { ascending: true })
-    .limit(1);
+    .order("scheduled_at", { ascending: false });
 
-  const nextSession = (sessions?.[0] as PublicSession) ?? null;
+  const allSessions = (sessions as PublicSession[]) ?? [];
+  const now = Date.now();
+
+  const nextSession =
+    [...allSessions]
+      .reverse()
+      .find(
+        (s) => s.status === "upcoming" && new Date(s.scheduled_at).getTime() >= now,
+      ) ?? null;
+
+  // Anything already held, newest first — that is where homework lives.
+  const pastLessons = allSessions.filter(
+    (s) => s.status === "done" || new Date(s.scheduled_at).getTime() < now,
+  );
+  const currentHomework = pastLessons.find((s) => s.homework)?.homework ?? null;
 
   const [
     { data: tests },
@@ -110,6 +122,12 @@ export default async function DashboardPage() {
           )}
         </Card>
 
+        {currentHomework && (
+          <Card title="Kodutöö">
+            <p className="whitespace-pre-line text-sm">{currentHomework}</p>
+          </Card>
+        )}
+
         <Card title="Mida soovin harjutada">
           {nextSession ? (
             <FocusForm sessionId={nextSession.id} initialText={focusText} />
@@ -164,6 +182,10 @@ export default async function DashboardPage() {
               <Empty>Ühtegi kontrolltööd pole lisatud.</Empty>
             )}
           </div>
+        </Card>
+
+        <Card title="Toimunud tunnid">
+          <LessonHistory lessons={pastLessons} />
         </Card>
 
         <Card title="Minu hinded">

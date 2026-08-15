@@ -23,10 +23,12 @@ Two layers:
 The real enforcement is Postgres Row Level Security, not the UI. Every table has
 policies; see `supabase/migrations/0001_init.sql`.
 
-The tutor's private `tutor_notes` deserve a note of their own: RLS cannot hide a
-single column, so the `sessions` table is admin-only for reads, and students and
-parents read through the `sessions_public` view, which simply does not select
-that column.
+A session carries three pieces of tutor-written text, and they are not equally
+visible. `summary` (what the lesson covered) and `homework` are meant for the
+student and their parent; `tutor_notes` are private to the tutor. RLS cannot
+hide a single column, so the `sessions` table is admin-only for reads and
+everyone else reads through the `sessions_public` view, which selects the first
+two and not the third.
 
 ## Setup
 
@@ -34,7 +36,8 @@ that column.
 
 Create a project, then run the files in `supabase/migrations/` in order
 (`0001_init.sql`, `0002_school_and_parent_invites.sql`,
-`0003_grades_and_private_materials.sql`) in the SQL editor.
+`0003_grades_and_private_materials.sql`, `0004_lesson_summary_and_homework.sql`)
+in the SQL editor.
 They create the tables, RLS policies, the two storage buckets (both private),
 the trigger that turns a signup into a `profiles` row, and the parent-invite
 functions.
@@ -94,6 +97,11 @@ Files move in both directions, and both are per student:
   The object key carries the same split — `materials/<student_id>/…` versus
   `materials/shared/…` — so the storage policy matches the row policy.
 
+After a lesson the tutor fills in **what was covered** and the **homework** on
+that session. Both show up on the student's dashboard — the newest homework as
+a card of its own, and the full run under *Toimunud tunnid* — and identically on
+the parent's page. The student is emailed when homework is set or changed.
+
 Students enter their own **grades** (subject, mark, date, optional note). The
 mark is free text so `5`, `4+`, `arvestatud` and `87%` all fit. The tutor and
 the linked parent can read them; only the student can add or remove them.
@@ -119,7 +127,7 @@ objects (`auth.uid()`, `auth.users`, `storage`) so the migration runs unmodified
 supabase/tests/run.sh -h /tmp -p 5433 -U postgres
 ```
 
-77 checks in three suites:
+91 checks in four suites:
 
 - `rls_tests.sql` — student isolation, cross-student write attempts, privilege
   escalation, parent read-only access, admin access, storage path rules.
@@ -130,6 +138,9 @@ supabase/tests/run.sh -h /tmp -p 5433 -U postgres
   student's grades, a parent can read but not change them, and a material aimed
   at one student is invisible to every other student, both as a row and as a
   storage object.
+- `lesson_notes_tests.sql` — the student and parent can read a lesson's summary
+  and homework but not the tutor's private notes, and the student cannot rewrite
+  what the tutor recorded.
 
 ```bash
 npm run typecheck   # tsc
@@ -143,8 +154,8 @@ src/app/gate         shared password screen + its route handler
 src/app/login        Supabase email/password sign-in
 src/app/signup       sign-up as student (name, grade, textbook, school) or parent (invite code)
 src/app/liitu        manual invite-code entry, for a parent whose code needs re-trying
-src/app/dashboard    student: next session, focus note, PDF upload, tests, grades, materials
-src/app/parent       parent: read-only view of their child
+src/app/dashboard    student: next session, homework, past lessons, focus note, PDF upload, tests, grades, materials
+src/app/parent       parent: read-only view of their child, including homework and lesson summaries
 src/app/admin        tutor: all students, sessions, files, grades, per-student and shared materials
 src/app/actions      server actions (auth, student, admin)
 src/lib              Supabase clients, gate, email, formatting, types
