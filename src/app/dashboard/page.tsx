@@ -2,11 +2,24 @@ import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { deleteFile, deleteTest } from "@/app/actions/student";
-import type { Material, PublicSession, SessionFile, Test } from "@/lib/types";
+import {
+  cancelParentInvite,
+  deleteFile,
+  deleteTest,
+  revokeParentAccess,
+} from "@/app/actions/student";
+import type {
+  Material,
+  ParentInvite,
+  Profile,
+  PublicSession,
+  SessionFile,
+  Test,
+} from "@/lib/types";
 import FocusForm from "./FocusForm";
 import TestForm from "./TestForm";
 import Uploader from "./Uploader";
+import ParentAccess from "./ParentAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +38,8 @@ export default async function DashboardPage() {
 
   const nextSession = (sessions?.[0] as PublicSession) ?? null;
 
-  const [{ data: tests }, { data: materials }] = await Promise.all([
+  const [{ data: tests }, { data: materials }, { data: parents }, { data: invites }] =
+    await Promise.all([
     supabase
       .from("tests")
       .select("*")
@@ -36,7 +50,16 @@ export default async function DashboardPage() {
       .from("materials")
       .select("*")
       .order("created_at", { ascending: false }),
+    supabase.from("profiles").select("*").eq("parent_of", profile.id),
+    supabase
+      .from("parent_invites")
+      .select("*")
+      .is("accepted_at", null)
+      .order("created_at", { ascending: false }),
   ]);
+
+  const linkedParent = ((parents as Profile[]) ?? [])[0] ?? null;
+  const pendingInvite = ((invites as ParentInvite[]) ?? [])[0] ?? null;
 
   let focusText = "";
   let files: SessionFile[] = [];
@@ -128,6 +151,52 @@ export default async function DashboardPage() {
               <Empty>Ühtegi kontrolltööd pole lisatud.</Empty>
             )}
           </div>
+        </Card>
+
+        <Card title="Vanema ligipääs">
+          {linkedParent ? (
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">{linkedParent.full_name}</p>
+                <p className="text-sm text-slate-500">
+                  Näeb sinu järgmist tundi, kontrolltöid ja soove. Muuta ei saa.
+                </p>
+              </div>
+              <form action={revokeParentAccess}>
+                <input type="hidden" name="parent_id" value={linkedParent.id} />
+                <button className="text-sm text-slate-500 underline hover:text-red-600">
+                  Eemalda ligipääs
+                </button>
+              </form>
+            </div>
+          ) : pendingInvite ? (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">
+                Anna see kood oma vanemale. Ta loob konto lapsevanemana ja sisestab
+                selle.
+              </p>
+              <p className="font-mono text-2xl tracking-widest">{pendingInvite.code}</p>
+              <p className="text-sm text-slate-500">
+                Kehtib kuni {formatDateTime(pendingInvite.expires_at)}.
+                {pendingInvite.parent_email
+                  ? ` Saatsime selle aadressile ${pendingInvite.parent_email}.`
+                  : ""}
+              </p>
+              <form action={cancelParentInvite}>
+                <input type="hidden" name="id" value={pendingInvite.id} />
+                <button className="text-sm text-slate-500 underline hover:text-red-600">
+                  Tühista kutse
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">
+                Ainult sina saad oma vanemale ligipääsu anda — selleks loo kutse kood.
+              </p>
+              <ParentAccess />
+            </div>
+          )}
         </Card>
 
         <Card title="Materjalid">

@@ -68,8 +68,12 @@ begin;
      (select count(*) = 1 from public.profiles where id = :alice::uuid)),
     ('student CANNOT read another student profile',
      (select count(*) = 0 from public.profiles where id = :bob::uuid)),
-    ('student sees only own row in unfiltered profile scan',
-     (select count(*) = 1 from public.profiles)),
+    -- Since 0002 a student also sees the parent linked to them (needed to show
+    -- who has access), and nothing else.
+    ('student profile scan returns only self and their linked parent',
+     (select count(*) = 2 from public.profiles)
+     and (select bool_and(p.id = :alice::uuid or p.parent_of = :alice::uuid)
+            from public.profiles p)),
     ('student reads own session via view',
      (select count(*) = 1 from public.sessions_public where student_id = :alice::uuid)),
     ('student CANNOT read another student session',

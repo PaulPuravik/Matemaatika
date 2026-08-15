@@ -7,6 +7,7 @@ export type Profile = {
   full_name: string;
   grade: string | null;
   textbook: string | null;
+  school: string | null;
   parent_of: string | null;
   created_at: string;
 };
@@ -55,4 +56,15 @@ export type Material = {
   grade: string | null;
   topic: string | null;
   created_at: string;
+};
+
+export type ParentInvite = {
+  id: string;
+  student_id: string;
+  code: string;
+  parent_email: string | null;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  accepted_by: string | null;
 };

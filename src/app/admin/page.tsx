@@ -71,6 +71,7 @@ export default async function AdminPage() {
               <p className="-mt-2 mb-4 text-sm text-slate-500">
                 {[
                   student.grade,
+                  student.school,
                   student.textbook,
                   emails.get(student.id),
                   linkedParents.length > 0

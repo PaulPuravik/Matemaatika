@@ -63,3 +63,20 @@ export async function notifyStudent(
     ...(siteUrl ? ["", `Vaata: ${siteUrl}/dashboard`] : []),
   ]);
 }
+
+/** Sent to the parent when their child invites them. Carries the join code. */
+export async function notifyParentInvite(
+  to: string,
+  studentName: string,
+  code: string,
+): Promise<boolean> {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  return send(to, `${studentName} kutsub sind matemaatika keskkonda`, [
+    `${studentName} andis sulle ligipääsu oma matemaatika eratundide infole.`,
+    "",
+    `Sinu kutse kood: ${code}`,
+    "",
+    "Loo konto lapsevanemana ja sisesta see kood.",
+    ...(siteUrl ? ["", `Vaata: ${siteUrl}/signup`] : []),
+  ]);
+}

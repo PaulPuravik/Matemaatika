@@ -32,9 +32,11 @@ that column.
 
 ### 1. Supabase
 
-Create a project, then run `supabase/migrations/0001_init.sql` in the SQL editor.
-It creates the tables, RLS policies, the two storage buckets (both private) and
-the trigger that turns a signup into a `profiles` row.
+Create a project, then run the files in `supabase/migrations/` in order
+(`0001_init.sql`, then `0002_school_and_parent_invites.sql`) in the SQL editor.
+They create the tables, RLS policies, the two storage buckets (both private),
+the trigger that turns a signup into a `profiles` row, and the parent-invite
+functions.
 
 ### 2. Environment
 
@@ -46,28 +48,30 @@ exclusively from server actions and route handlers, never from client components
 
 ### 3. Make yourself the admin
 
-Sign up through the app like a normal student, then in the Supabase SQL editor:
+Sign up through the app, then in the Supabase SQL editor:
 
 ```sql
 update public.profiles set role = 'admin'
 where id = (select id from auth.users where email = 'sinu@email.ee');
 ```
 
-### 4. Link a parent account
+### 4. Parent accounts
 
-The parent signs up normally, then:
+Parents are linked by the student, not by you and not by themselves. On their
+dashboard a student opens **Vanema ligipääs** and generates an 8-character code
+(optionally emailed straight to the parent). The parent signs up choosing
+**Olen lapsevanem**, enters that code, and is linked. The student can revoke the
+access again at any time.
 
-```sql
-update public.profiles
-set role = 'parent',
-    parent_of = (select id from auth.users where email = 'opilane@email.ee')
-where id = (select id from auth.users where email = 'vanem@email.ee');
-```
+There is no other path in or out: `accept_parent_invite()` is the only thing
+that can set `role = 'parent'` / `parent_of` for a non-admin, the code is
+single-use and expires in 14 days, and nobody can read the invites table except
+the student who owns the invite. A trigger reverts any other attempt to change
+`role` or `parent_of`, so a student cannot promote themselves and a parent
+cannot re-point themselves at a different child.
 
-Role and parent links are deliberately not editable from the app: a trigger
-reverts any change to `role` or `parent_of` that does not come from the admin or
-from a direct SQL/service-role connection, so a student cannot promote
-themselves.
+You can still assign roles directly in SQL when you need to — a connection with
+no end-user (the SQL editor, the service role) is trusted.
 
 ### 5. Run it
 
@@ -96,8 +100,12 @@ objects (`auth.uid()`, `auth.users`, `storage`) so the migration runs unmodified
 supabase/tests/run.sh -h /tmp -p 5433 -U postgres
 ```
 
-35 checks covering student isolation, cross-student write attempts, privilege
-escalation, parent read-only access, admin access and the storage path rules.
+55 checks in two suites. `rls_tests.sql` covers student isolation, cross-student
+write attempts, privilege escalation, parent read-only access, admin access and
+the storage path rules. `parent_invite_tests.sql` covers the invite flow: codes
+are single-use and expiring, outsiders cannot read or reuse them, a student
+cannot accept their own, a parent cannot switch children or issue invites, and
+revoking really cuts access.
 
 ```bash
 npm run typecheck   # tsc
@@ -109,14 +117,15 @@ npm run build       # production build
 ```
 src/app/gate         shared password screen + its route handler
 src/app/login        Supabase email/password sign-in
-src/app/signup       sign-up, collecting name, grade and textbook
+src/app/signup       sign-up as student (name, grade, textbook, school) or parent (invite code)
+src/app/liitu        manual invite-code entry, for a parent whose code needs re-trying
 src/app/dashboard    student: next session, focus note, PDF upload, tests, materials
 src/app/parent       parent: read-only view of their child
 src/app/admin        tutor: all students, sessions, files, materials
 src/app/actions      server actions (auth, student, admin)
 src/lib              Supabase clients, gate, email, formatting, types
 src/middleware.ts    enforces the gate, refreshes the Supabase session
-supabase/migrations  schema, RLS policies, storage policies
+supabase/migrations  schema, RLS policies, storage policies, parent invites
 supabase/tests       RLS test suite
 ```
 

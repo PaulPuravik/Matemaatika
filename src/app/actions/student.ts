@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
-import { notifyTutor } from "@/lib/email";
+import { notifyParentInvite, notifyTutor } from "@/lib/email";
 import { formatDate, formatDateTime } from "@/lib/format";
 
 export type ActionState = { error?: string; ok?: boolean } | null;
@@ -147,5 +147,48 @@ export async function deleteFile(formData: FormData) {
   const supabase = await createClient();
   await supabase.storage.from("student-files").remove([path]);
   await supabase.from("session_files").delete().eq("id", id);
+  revalidatePath("/dashboard");
+}
+
+/**
+ * Issues a join code for a parent. Only the student can do this — there is no
+ * other way for a parent account to become linked. Issuing a new code retires
+ * any unused earlier one.
+ */
+export async function createParentInvite(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const parentEmail = String(formData.get("parent_email") ?? "").trim();
+
+  const profile = await getProfile();
+  if (!profile) return { error: "Sessioon on aegunud. Logi uuesti sisse." };
+
+  const supabase = await createClient();
+  const { data: code, error } = await supabase.rpc("create_parent_invite", {
+    p_parent_email: parentEmail || null,
+  });
+
+  if (error || !code) return { error: "Kutse loomine ebaõnnestus." };
+
+  if (parentEmail) {
+    await notifyParentInvite(parentEmail, profile.full_name, code as string);
+  }
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function cancelParentInvite(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const supabase = await createClient();
+  await supabase.from("parent_invites").delete().eq("id", id);
+  revalidatePath("/dashboard");
+}
+
+export async function revokeParentAccess(formData: FormData) {
+  const parentId = String(formData.get("parent_id") ?? "");
+  const supabase = await createClient();
+  await supabase.rpc("revoke_parent_access", { p_parent: parentId });
   revalidatePath("/dashboard");
 }
