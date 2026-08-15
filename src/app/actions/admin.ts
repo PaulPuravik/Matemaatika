@@ -252,10 +252,26 @@ export type SyncReport = {
 export async function syncCalendar(): Promise<SyncReport> {
   await assertAdmin();
 
+  const supabase = await createClient();
+
+  // The calendar columns arrive with migration 0006. Without it every insert
+  // below would fail one by one with nothing explaining why.
+  const { error: schemaError } = await supabase
+    .from("sessions")
+    .select("google_event_id")
+    .limit(1);
+
+  if (schemaError) {
+    return {
+      error:
+        "Andmebaasis puudub kalendri tugi. Jooksuta Supabase SQL editoris " +
+        "migratsioon 0006_google_calendar_sync.sql ja proovi uuesti. " +
+        `(${schemaError.message})`,
+    };
+  }
+
   const result = await fetchEvents();
   if (!result.ok) return { error: result.error };
-
-  const supabase = await createClient();
 
   const [{ data: profiles }, { data: settings }] = await Promise.all([
     supabase.from("profiles").select("*"),
@@ -297,11 +313,16 @@ export async function syncCalendar(): Promise<SyncReport> {
       continue;
     }
 
-    const { data: existing } = await supabase
+    const { data: existing, error: lookupError } = await supabase
       .from("sessions")
       .select("id")
       .eq("google_event_id", match.event.id)
       .maybeSingle();
+
+    if (lookupError) {
+      skipped.push(`${when} — ${match.studentName}: ${lookupError.message}`);
+      continue;
+    }
 
     const scheduledAt = match.event.start;
     const notes = match.event.description.trim() || null;
@@ -312,7 +333,7 @@ export async function syncCalendar(): Promise<SyncReport> {
         .update({ scheduled_at: scheduledAt })
         .eq("id", existing.id);
       if (error) {
-        skipped.push(`${when} — ${match.studentName}: uuendamine ebaõnnestus`);
+        skipped.push(`${when} — ${match.studentName}: ${error.message}`);
       } else {
         updated++;
       }
@@ -329,7 +350,7 @@ export async function syncCalendar(): Promise<SyncReport> {
     });
 
     if (error) {
-      skipped.push(`${when} — ${match.studentName}: lisamine ebaõnnestus`);
+      skipped.push(`${when} — ${match.studentName}: ${error.message}`);
     } else {
       created++;
     }
