@@ -37,7 +37,8 @@ two and not the third.
 Create a project, then run the files in `supabase/migrations/` in order
 (`0001_init.sql`, `0002_school_and_parent_invites.sql`,
 `0003_grades_and_private_materials.sql`, `0004_lesson_summary_and_homework.sql`,
-`0005_approvals_and_account_admin.sql`) in the SQL editor.
+`0005_approvals_and_account_admin.sql`, `0006_google_calendar_sync.sql`)
+in the SQL editor.
 They create the tables, RLS policies, the two storage buckets (both private),
 the trigger that turns a signup into a `profiles` row, and the parent-invite
 functions.
@@ -135,6 +136,37 @@ Students enter their own **grades** (subject, mark, date, optional note). The
 mark is free text so `5`, `4+`, `arvestatud` and `87%` all fit. The tutor and
 the linked parent can read them; only the student can add or remove them.
 
+## Google Calendar
+
+Optional. When `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY` and
+`GOOGLE_CALENDAR_ID` are set, `/admin` grows a **Sünkroniseeri kalendrist**
+button; without them the whole section stays hidden.
+
+A service account rather than OAuth: the tutor shares their calendar with the
+service account's address read-only, and that is the entire setup. No consent
+screen, no callback route, and no refresh token to keep alive — Google expires
+those after 7 days while an app sits in "Testing".
+
+Events are fetched with `singleEvents=true`, so Google expands a weekly lesson
+into individual occurrences and no recurrence rules are interpreted here.
+
+Matching lives in `src/lib/calendar.ts` and is deliberately conservative:
+
+- an event needs the keyword (`calendar_keyword` in `app_settings`, default
+  `Eratund`) or it is ignored outright, so private calendar entries never become
+  lessons;
+- the student is found by their `calendar_alias`, their full name, or their
+  first name when no other student shares it;
+- names match on whole words only — "Ann" does not match "Anna", and the check
+  is unicode-aware so õ, ä, ö and ü behave;
+- an event naming nobody, or two students at once, is reported back rather than
+  guessed at.
+
+Imported lessons carry the calendar event's id, so re-syncing moves the existing
+lesson instead of creating a second one. Lessons entered by hand carry no id and
+are never touched, and the sync never deletes anything. The calendar note goes
+into `tutor_notes`, which students cannot read.
+
 ## Email notifications
 
 Sent from server-side code via Resend. The tutor is notified when a student
@@ -177,6 +209,7 @@ supabase/tests/run.sh -h /tmp -p 5433 -U postgres
 ```bash
 npm run typecheck   # tsc
 npm run build       # production build
+npm run test:calendar   # 20 checks on the calendar name matching
 ```
 
 ## Layout

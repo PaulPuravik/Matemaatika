@@ -6,7 +6,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getProfile } from "@/lib/auth";
 import { notifyStudent } from "@/lib/email";
 import { formatDateTime } from "@/lib/format";
+import { fetchEvents } from "@/lib/google-calendar";
+import { matchEvents } from "@/lib/calendar";
 import type { ActionState } from "@/app/actions/student";
+import type { Profile } from "@/lib/types";
 
 /** RLS is the real guard; this just fails fast with a readable message. */
 async function assertAdmin() {
@@ -227,5 +230,126 @@ export async function unlinkParent(formData: FormData) {
 
   const supabase = await createClient();
   await supabase.from("profiles").update({ parent_of: null }).eq("id", id);
+  revalidatePath("/admin");
+}
+
+// ---------------------------------------------------------------------------
+// Google Calendar
+// ---------------------------------------------------------------------------
+
+export type SyncReport = {
+  error?: string;
+  created?: number;
+  updated?: number;
+  skipped?: string[];
+};
+
+/**
+ * Pulls lessons out of the tutor's calendar. Only ever creates or moves
+ * sessions it made itself (they carry the calendar event's id) — a lesson
+ * entered by hand is never touched, and nothing is ever deleted.
+ */
+export async function syncCalendar(): Promise<SyncReport> {
+  await assertAdmin();
+
+  const result = await fetchEvents();
+  if (!result.ok) return { error: result.error };
+
+  const supabase = await createClient();
+
+  const [{ data: profiles }, { data: settings }] = await Promise.all([
+    supabase.from("profiles").select("*"),
+    supabase.from("app_settings").select("value").eq("key", "calendar_keyword").maybeSingle(),
+  ]);
+
+  const students = ((profiles as Profile[]) ?? []).filter(
+    (p) => p.role === "student" && p.approved,
+  );
+  const keyword = settings?.value ?? "Eratund";
+
+  if (students.length === 0) {
+    return { error: "Ühtegi kinnitatud õpilast pole, kellega tunde siduda." };
+  }
+
+  const matches = matchEvents(result.events, students, keyword);
+
+  let created = 0;
+  let updated = 0;
+  const skipped: string[] = [];
+
+  for (const match of matches) {
+    if (match.kind === "no-keyword") continue;
+
+    const when = new Date(match.event.start).toLocaleString("et-EE", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+
+    if (match.kind === "unknown-student") {
+      skipped.push(`${when} — "${match.event.summary}": õpilast ei tuvastanud`);
+      continue;
+    }
+    if (match.kind === "ambiguous") {
+      skipped.push(
+        `${when} — "${match.event.summary}": sobib mitu õpilast ` +
+          `(${match.candidates.join(", ")})`,
+      );
+      continue;
+    }
+
+    const { data: existing } = await supabase
+      .from("sessions")
+      .select("id")
+      .eq("google_event_id", match.event.id)
+      .maybeSingle();
+
+    const scheduledAt = match.event.start;
+    const notes = match.event.description.trim() || null;
+
+    if (existing) {
+      const { error } = await supabase
+        .from("sessions")
+        .update({ scheduled_at: scheduledAt })
+        .eq("id", existing.id);
+      if (error) {
+        skipped.push(`${when} — ${match.studentName}: uuendamine ebaõnnestus`);
+      } else {
+        updated++;
+      }
+      continue;
+    }
+
+    const { error } = await supabase.from("sessions").insert({
+      student_id: match.studentId,
+      scheduled_at: scheduledAt,
+      google_event_id: match.event.id,
+      // The calendar note is the tutor's own shorthand, so it lands in the
+      // private field rather than anywhere the student can read.
+      tutor_notes: notes,
+    });
+
+    if (error) {
+      skipped.push(`${when} — ${match.studentName}: lisamine ebaõnnestus`);
+    } else {
+      created++;
+    }
+  }
+
+  revalidatePath("/admin");
+  return { created, updated, skipped };
+}
+
+/** The short name the tutor writes in their calendar for this student. */
+export async function setCalendarAlias(formData: FormData) {
+  await assertAdmin();
+  const id = String(formData.get("id") ?? "");
+  const alias = String(formData.get("calendar_alias") ?? "").trim();
+
+  const supabase = await createClient();
+  await supabase
+    .from("profiles")
+    .update({ calendar_alias: alias || null })
+    .eq("id", id);
+
   revalidatePath("/admin");
 }

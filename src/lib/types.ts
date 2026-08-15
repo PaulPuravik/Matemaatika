@@ -8,6 +8,8 @@ export type Profile = {
   grade: string | null;
   textbook: string | null;
   school: string | null;
+  /** Short name the tutor uses in their calendar, when it differs. */
+  calendar_alias: string | null;
   parent_of: string | null;
   approved: boolean;
   approved_at: string | null;
@@ -26,7 +28,10 @@ export type PublicSession = {
   homework: string | null;
 };
 
-export type TutorSession = PublicSession & { tutor_notes: string | null };
+export type TutorSession = PublicSession & {
+  tutor_notes: string | null;
+  google_event_id: string | null;
+};
 
 export type SessionFocus = {
   id: string;

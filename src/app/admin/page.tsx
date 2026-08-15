@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isCalendarConfigured } from "@/lib/google-calendar";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import { formatDate, formatDateTime } from "@/lib/format";
 import {
@@ -8,6 +9,7 @@ import {
   deleteAccount,
   deleteMaterial,
   deleteSession,
+  setCalendarAlias,
   unlinkParent,
 } from "@/app/actions/admin";
 import type {
@@ -21,6 +23,7 @@ import type {
 } from "@/lib/types";
 import SessionForm from "./SessionForm";
 import MaterialUploader from "./MaterialUploader";
+import CalendarSync from "./CalendarSync";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +56,7 @@ export default async function AdminPage() {
   const allMaterials = (materials as Material[]) ?? [];
   const sharedMaterials = allMaterials.filter((m) => !m.student_id);
   const now = Date.now();
+  const calendarOn = isCalendarConfigured();
 
   return (
     <>
@@ -97,6 +101,12 @@ export default async function AdminPage() {
                 </li>
               ))}
             </ul>
+          </Card>
+        )}
+
+        {calendarOn && (
+          <Card title="Google Kalender">
+            <CalendarSync />
           </Card>
         )}
 
@@ -189,6 +199,30 @@ export default async function AdminPage() {
                     <Empty>Hindeid pole lisatud.</Empty>
                   )}
                 </div>
+
+                {calendarOn && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold text-slate-700">
+                      Nimi kalendris
+                    </h3>
+                    <form action={setCalendarAlias} className="flex flex-wrap gap-2">
+                      <input type="hidden" name="id" value={student.id} />
+                      <input
+                        name="calendar_alias"
+                        defaultValue={student.calendar_alias ?? ""}
+                        placeholder={student.full_name.split(" ")[0]}
+                        className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-base shadow-sm sm:text-sm"
+                      />
+                      <button className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium hover:bg-slate-50">
+                        Salvesta
+                      </button>
+                    </form>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Vaja ainult siis, kui kirjutad kalendrisse midagi muud kui
+                      tema nime.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <h3 className="mb-2 text-sm font-semibold text-slate-700">Konto</h3>
