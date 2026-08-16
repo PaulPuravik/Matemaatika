@@ -8,6 +8,10 @@ import { ErrorText } from "@/components/ui";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
+// Images as well as PDFs: a photo of a worked problem is what a phone
+// produces, and only an image can carry a drawn-on question later.
+const ACCEPTED = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic"];
+
 /**
  * Uploads straight from the browser to Supabase Storage, then records the row
  * server-side. Going direct keeps large PDFs out of the server action body.
@@ -28,8 +32,8 @@ export default function Uploader({
   async function handleUpload(file: File) {
     setError(null);
 
-    if (file.type !== "application/pdf") {
-      setError("Palun lisa PDF-fail.");
+    if (!ACCEPTED.includes(file.type)) {
+      setError("Lisa PDF või pilt (JPG, PNG).");
       return;
     }
     if (file.size > MAX_BYTES) {
@@ -41,12 +45,13 @@ export default function Uploader({
     try {
       // The storage policy requires the first path segment to be the student's
       // own id, so a student can only ever write into their own folder.
-      const path = `${studentId}/${sessionId ?? "general"}/${crypto.randomUUID()}.pdf`;
+      const extension = file.name.split(".").pop()?.toLowerCase() || "bin";
+      const path = `${studentId}/${sessionId ?? "general"}/${crypto.randomUUID()}.${extension}`;
       const supabase = createClient();
 
       const { error: uploadError } = await supabase.storage
         .from("student-files")
-        .upload(path, file, { contentType: "application/pdf" });
+        .upload(path, file, { contentType: file.type });
 
       if (uploadError) {
         setError("Üleslaadimine ebaõnnestus.");
@@ -71,7 +76,7 @@ export default function Uploader({
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf"
+        accept="application/pdf,image/*"
         disabled={busy}
         onChange={(event) => {
           const file = event.target.files?.[0];

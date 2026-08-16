@@ -26,6 +26,7 @@ export type PublicSession = {
   /** What was covered in the lesson. Written by the tutor, read by both. */
   summary: string | null;
   homework: string | null;
+  homework_due: string | null;
 };
 
 export type TutorSession = PublicSession & {
@@ -66,8 +67,9 @@ export type Material = {
   file_path: string;
   grade: string | null;
   topic: string | null;
-  /** null = shared with everyone; set = visible only to that student. */
+  /** Legacy single-recipient column, superseded by material_recipients. */
   student_id: string | null;
+  audience: "all" | "selected";
   created_at: string;
 };
 
@@ -90,4 +92,28 @@ export type ParentInvite = {
   expires_at: string;
   accepted_at: string | null;
   accepted_by: string | null;
+};
+
+export type MaterialRecipient = { material_id: string; student_id: string };
+
+/** A box drawn on an image, as fractions of its width and height. */
+export type Region = { x: number; y: number; w: number; h: number };
+
+export type Question = {
+  id: string;
+  student_id: string;
+  file_id: string | null;
+  material_id: string | null;
+  body: string;
+  region: Region | null;
+  created_at: string;
+  answered_at: string | null;
+};
+
+export type QuestionReply = {
+  id: string;
+  question_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
 };

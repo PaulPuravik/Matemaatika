@@ -240,3 +240,89 @@ export async function deleteGrade(formData: FormData) {
   await supabase.from("grades").delete().eq("id", id);
   revalidatePath("/dashboard");
 }
+
+// ---------------------------------------------------------------------------
+// Questions
+// ---------------------------------------------------------------------------
+
+/**
+ * A question about a file, optionally about one drawn-on region of an image.
+ * The tutor hears about it straight away, since the point is to unblock the
+ * student between lessons.
+ */
+export async function askQuestion(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const body = String(formData.get("body") ?? "").trim();
+  const fileId = String(formData.get("file_id") ?? "") || null;
+  const materialId = String(formData.get("material_id") ?? "") || null;
+  const rawRegion = String(formData.get("region") ?? "");
+
+  if (!body) return { error: "Kirjuta oma küsimus." };
+
+  const profile = await getProfile();
+  if (!profile) return { error: "Sessioon on aegunud. Logi uuesti sisse." };
+
+  let region: unknown = null;
+  if (rawRegion) {
+    try {
+      region = JSON.parse(rawRegion);
+    } catch {
+      region = null;
+    }
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("questions").insert({
+    student_id: profile.id,
+    file_id: fileId,
+    material_id: materialId,
+    body,
+    region,
+  });
+
+  if (error) return { error: error.message };
+
+  await notifyTutor(`${profile.full_name}: uus küsimus`, [
+    `${profile.full_name} küsib:`,
+    "",
+    body,
+    ...(region ? ["", "Küsimus on märgitud pildi kindla koha kohta."] : []),
+  ]);
+
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+export async function replyToQuestion(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const questionId = String(formData.get("question_id") ?? "");
+  const body = String(formData.get("body") ?? "").trim();
+  if (!body) return { error: "Kirjuta vastus." };
+
+  const profile = await getProfile();
+  if (!profile) return { error: "Sessioon on aegunud. Logi uuesti sisse." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("question_replies").insert({
+    question_id: questionId,
+    author_id: profile.id,
+    body,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/admin", "layout");
+  return { ok: true };
+}
+
+export async function deleteQuestion(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const supabase = await createClient();
+  await supabase.from("questions").delete().eq("id", id);
+  revalidatePath("/dashboard", "layout");
+}

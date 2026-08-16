@@ -51,3 +51,10 @@ for m in "$HERE"/../migrations/*.sql; do run "$m"; done
 
 echo "=== approvals and account admin ==="
 psql "${PSQL_ARGS[@]}" -d "$DB" -q -f "$HERE/approval_tests.sql"
+
+psql "${PSQL_ARGS[@]}" -q -c "drop database if exists $DB;" -c "create database $DB;"
+run "$HERE/supabase_stub.sql"
+for m in "$HERE"/../migrations/*.sql; do run "$m"; done
+
+echo "=== material recipients and questions ==="
+psql "${PSQL_ARGS[@]}" -d "$DB" -q -f "$HERE/recipients_and_questions_tests.sql"

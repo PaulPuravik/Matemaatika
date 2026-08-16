@@ -52,7 +52,9 @@ export default async function ParentPage() {
   const pastLessons = allSessions.filter(
     (s) => s.status === "done" || new Date(s.scheduled_at).getTime() < now,
   );
-  const currentHomework = pastLessons.find((s) => s.homework)?.homework ?? null;
+  const withHomework = pastLessons.find((s) => s.homework) ?? null;
+  const currentHomework = withHomework?.homework ?? null;
+  const currentHomeworkDue = withHomework?.homework_due ?? null;
 
   const { data: tests } = await supabase
     .from("tests")
@@ -99,6 +101,11 @@ export default async function ParentPage() {
         {currentHomework && (
           <Card title="Kodutöö">
             <p className="whitespace-pre-line text-sm">{currentHomework}</p>
+            {currentHomeworkDue && (
+              <p className="mt-2 text-sm text-slate-500">
+                Tähtaeg: {formatDate(currentHomeworkDue)}
+              </p>
+            )}
           </Card>
         )}
 

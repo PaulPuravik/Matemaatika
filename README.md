@@ -37,7 +37,7 @@ two and not the third.
 Create a project, then run the files in `supabase/migrations/` in order
 (`0001_init.sql`, `0002_school_and_parent_invites.sql`,
 `0003_grades_and_private_materials.sql`, `0004_lesson_summary_and_homework.sql`,
-`0005_approvals_and_account_admin.sql`, `0006_google_calendar_sync.sql`)
+`0005_approvals_and_account_admin.sql`, `0006_google_calendar_sync.sql`, `0007_recipients_homework_due_and_questions.sql`)
 in the SQL editor.
 They create the tables, RLS policies, the two storage buckets (both private),
 the trigger that turns a signup into a `profiles` row, and the parent-invite
@@ -122,10 +122,11 @@ Files move in both directions, and both are per student:
   under `student-files/<student_id>/…`, so the storage policy alone keeps one
   student out of another's folder. The admin view lists them grouped
   under the student who sent them.
-- **Tutor → student.** A material with `student_id` set is visible only to that
-  student (and their linked parent); with it null it is shared with everyone.
-  The object key carries the same split — `materials/<student_id>/…` versus
-  `materials/shared/…` — so the storage policy matches the row policy.
+- **Tutor → student.** Each material has an `audience`: `all`, or `selected`
+  with the recipients listed in `material_recipients`, so one file can go to
+  several named students. The storage policy resolves the object back to its
+  material row rather than trusting the path, which is what makes multiple
+  recipients possible at all.
 
 After a lesson the tutor fills in **what was covered** and the **homework** on
 that session. Both show up on the student's dashboard — the newest homework as
@@ -172,6 +173,19 @@ lesson instead of creating a second one. Lessons entered by hand carry no id and
 are never touched, and the sync never deletes anything. The calendar note goes
 into `tutor_notes`, which students cannot read.
 
+## Questions
+
+A student can ask about any file they can see — their own upload or a material
+shared with them. When the file is an image, dragging on it records a region as
+fractions of the image, so "I don't get this bit" can be pointed at rather than
+described. Uploads therefore accept images as well as PDFs, since a phone photo
+is what a student actually has.
+
+The tutor is emailed on every question and the student is emailed when it is
+answered. A question and its replies are readable by the student, their parent
+and the tutor; the student may add to their own thread, the parent may not
+write at all.
+
 ## Email notifications
 
 Sent from server-side code via Resend. The tutor is notified when a student
@@ -193,7 +207,7 @@ objects (`auth.uid()`, `auth.users`, `storage`) so the migration runs unmodified
 supabase/tests/run.sh -h /tmp -p 5433 -U postgres
 ```
 
-110 checks in five suites:
+136 checks in six suites:
 
 - `rls_tests.sql` — student isolation, cross-student write attempts, privilege
   escalation, parent read-only access, admin access, storage path rules.
@@ -210,6 +224,10 @@ supabase/tests/run.sh -h /tmp -p 5433 -U postgres
 - `approval_tests.sql` — an unapproved account can read its own profile and
   nothing else, cannot write anything, cannot approve itself, and a parent
   holding a valid invite code is linked but still sees nothing until approved.
+- `recipients_and_questions_tests.sql` — a material addressed to two students is
+  invisible to a third as both a row and a storage object, a student cannot add
+  themselves as a recipient, and a question thread is readable only by its
+  student, their parent and the tutor, with the parent unable to reply.
 
 ```bash
 npm run typecheck   # tsc
@@ -224,9 +242,10 @@ src/app/gate         shared password screen + its route handler
 src/app/login        Supabase email/password sign-in
 src/app/signup       sign-up as student (name, grade, textbook, school) or parent (invite code)
 src/app/liitu        manual invite-code entry, for a parent whose code needs re-trying
-src/app/dashboard    student: next session, homework, past lessons, focus note, PDF upload, tests, grades, materials
+src/app/dashboard    student: overview, plus tabs for Kodutöö, Materjalid and Küsimused
 src/app/parent       parent: read-only view of their child, including homework and lesson summaries
-src/app/admin        tutor: all students, sessions, files, grades, per-student and shared materials
+src/app/admin        tutor: overview, pending approvals, materials, calendar
+src/app/admin/opilane/[id]  one student on their own page, reached from the hamburger menu
 src/app/actions      server actions (auth, student, admin)
 src/lib              Supabase clients, gate, email, formatting, types
 src/middleware.ts    enforces the gate, refreshes the Supabase session

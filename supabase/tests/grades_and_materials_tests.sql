@@ -29,11 +29,17 @@ insert into public.grades (student_id, subject, mark, received_on) values
   (:bob::uuid,   'Vektorid',   '5', current_date - 1);
 
 -- One shared material, one aimed at Alice, one aimed at Bob, one legacy row.
-insert into public.materials (title, file_path, student_id) values
-  ('Kõigile: valemileht', 'shared/aaa.pdf', null),
-  ('Ainult Alice''ile',   :alice || '/bbb.pdf', :alice::uuid),
-  ('Ainult Bobile',       :bob   || '/ccc.pdf', :bob::uuid),
-  ('Vana jagatud fail',   'legacy.pdf',         null);
+-- Since 0007 the audience is explicit and the recipients live in their own
+-- table; 0007 migrates older rows into exactly this shape.
+insert into public.materials (id, title, file_path, student_id, audience) values
+  ('11110000-0000-0000-0000-000000000001', 'Kõigile: valemileht', 'shared/aaa.pdf', null, 'all'),
+  ('11110000-0000-0000-0000-000000000002', 'Ainult Alice''ile',   :alice || '/bbb.pdf', :alice::uuid, 'selected'),
+  ('11110000-0000-0000-0000-000000000003', 'Ainult Bobile',       :bob   || '/ccc.pdf', :bob::uuid, 'selected'),
+  ('11110000-0000-0000-0000-000000000004', 'Vana jagatud fail',   'legacy.pdf',         null, 'all');
+
+insert into public.material_recipients (material_id, student_id) values
+  ('11110000-0000-0000-0000-000000000002', :alice::uuid),
+  ('11110000-0000-0000-0000-000000000003', :bob::uuid);
 
 insert into storage.objects (bucket_id, name) values
   ('materials', 'shared/aaa.pdf'),

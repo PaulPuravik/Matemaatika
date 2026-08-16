@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getProfile } from "@/lib/auth";
 import { notifyStudent } from "@/lib/email";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { fetchEvents } from "@/lib/google-calendar";
 import { matchEvents } from "@/lib/calendar";
 import type { ActionState } from "@/app/actions/student";
@@ -64,6 +64,7 @@ export async function updateSession(
   const supabase = await createClient();
   const summary = String(formData.get("summary") ?? "").trim();
   const homework = String(formData.get("homework") ?? "").trim();
+  const homeworkDue = String(formData.get("homework_due") ?? "");
 
   const { data: before } = await supabase
     .from("sessions")
@@ -79,6 +80,7 @@ export async function updateSession(
       tutor_notes: tutorNotes || null,
       summary: summary || null,
       homework: homework || null,
+      homework_due: homeworkDue || null,
     })
     .eq("id", id);
 
@@ -93,6 +95,7 @@ export async function updateSession(
   if (before && homework && homework !== (before.homework ?? "")) {
     await emailStudent(before.student_id, "Uus kodutöö", [
       `Kodutöö: ${homework}`,
+      ...(homeworkDue ? [`Tähtaeg: ${formatDate(homeworkDue)}`] : []),
       ...(summary ? ["", `Tunnis tegime: ${summary}`] : []),
     ]);
   }
@@ -119,19 +122,31 @@ export async function registerMaterial(
   grade: string,
   topic: string,
   studentId?: string | null,
-): Promise<ActionState> {
+): Promise<ActionState & { id?: string }> {
   await assertAdmin();
 
   const supabase = await createClient();
-  const { error } = await supabase.from("materials").insert({
-    title,
-    file_path: filePath,
-    grade: grade || null,
-    topic: topic || null,
-    student_id: studentId || null,
-  });
+  const { data, error } = await supabase
+    .from("materials")
+    .insert({
+      title,
+      file_path: filePath,
+      grade: grade || null,
+      topic: topic || null,
+      student_id: studentId || null,
+      audience: studentId ? "selected" : "all",
+    })
+    .select("id")
+    .single();
 
   if (error) return { error: error.message };
+
+  // Uploading from a student's own page addresses it to them straight away.
+  if (studentId && data?.id) {
+    await supabase
+      .from("material_recipients")
+      .insert({ material_id: data.id, student_id: studentId });
+  }
 
   if (studentId) {
     try {
@@ -146,9 +161,9 @@ export async function registerMaterial(
     }
   }
 
-  revalidatePath("/admin");
-  revalidatePath("/dashboard");
-  return { ok: true };
+  revalidatePath("/admin", "layout");
+  revalidatePath("/dashboard", "layout");
+  return { ok: true, id: data?.id };
 }
 
 export async function deleteMaterial(formData: FormData) {
@@ -373,4 +388,77 @@ export async function setCalendarAlias(formData: FormData) {
     .eq("id", id);
 
   revalidatePath("/admin");
+}
+
+/** The tutor answers a question and the student is told it was answered. */
+export async function answerQuestion(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const me = await assertAdmin();
+  const questionId = String(formData.get("question_id") ?? "");
+  const body = String(formData.get("body") ?? "").trim();
+  if (!body) return { error: "Kirjuta vastus." };
+
+  const supabase = await createClient();
+
+  const { error } = await supabase.from("question_replies").insert({
+    question_id: questionId,
+    author_id: me.id,
+    body,
+  });
+  if (error) return { error: error.message };
+
+  const { data: question } = await supabase
+    .from("questions")
+    .select("student_id, body")
+    .eq("id", questionId)
+    .single();
+
+  await supabase
+    .from("questions")
+    .update({ answered_at: new Date().toISOString() })
+    .eq("id", questionId);
+
+  if (question) {
+    await emailStudent(question.student_id, "Õpetaja vastas sinu küsimusele", [
+      `Sinu küsimus: ${question.body}`,
+      "",
+      `Vastus: ${body}`,
+    ]);
+  }
+
+  revalidatePath("/admin", "layout");
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+/** Which students a material goes to. An empty list means everyone. */
+export async function setMaterialAudience(
+  materialId: string,
+  studentIds: string[],
+): Promise<ActionState> {
+  await assertAdmin();
+
+  const supabase = await createClient();
+  const audience = studentIds.length === 0 ? "all" : "selected";
+
+  const { error } = await supabase
+    .from("materials")
+    .update({ audience })
+    .eq("id", materialId);
+  if (error) return { error: error.message };
+
+  await supabase.from("material_recipients").delete().eq("material_id", materialId);
+
+  if (studentIds.length > 0) {
+    const { error: linkError } = await supabase
+      .from("material_recipients")
+      .insert(studentIds.map((student_id) => ({ material_id: materialId, student_id })));
+    if (linkError) return { error: linkError.message };
+  }
+
+  revalidatePath("/admin", "layout");
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
 }

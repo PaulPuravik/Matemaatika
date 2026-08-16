@@ -98,6 +98,16 @@ export default function SessionForm({
               className={inputClass}
             />
           </div>
+          <div>
+            <Label htmlFor={`due-${session.id}`}>Kodutöö tähtaeg</Label>
+            <input
+              id={`due-${session.id}`}
+              name="homework_due"
+              type="date"
+              defaultValue={session.homework_due ?? ""}
+              className={inputClass}
+            />
+          </div>
         </>
       )}
 

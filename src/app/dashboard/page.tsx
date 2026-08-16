@@ -1,7 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { Card, Empty, PageHeader } from "@/components/ui";
-import { LessonHistory } from "@/components/LessonHistory";
+import { Card, Empty } from "@/components/ui";
 import { formatDate, formatDateTime } from "@/lib/format";
 import {
   cancelParentInvite,
@@ -12,7 +11,6 @@ import {
 } from "@/app/actions/student";
 import type {
   Grade,
-  Material,
   ParentInvite,
   Profile,
   PublicSession,
@@ -48,14 +46,9 @@ export default async function DashboardPage() {
       ) ?? null;
 
   // Anything already held, newest first — that is where homework lives.
-  const pastLessons = allSessions.filter(
-    (s) => s.status === "done" || new Date(s.scheduled_at).getTime() < now,
-  );
-  const currentHomework = pastLessons.find((s) => s.homework)?.homework ?? null;
 
   const [
     { data: tests },
-    { data: materials },
     { data: grades },
     { data: parents },
     { data: invites },
@@ -66,10 +59,6 @@ export default async function DashboardPage() {
       .eq("student_id", profile.id)
       .gte("test_date", new Date().toISOString().slice(0, 10))
       .order("test_date", { ascending: true }),
-    supabase
-      .from("materials")
-      .select("*")
-      .order("created_at", { ascending: false }),
     supabase
       .from("grades")
       .select("*")
@@ -106,8 +95,6 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <PageHeader profile={profile} />
-
       <main className="mx-auto max-w-4xl space-y-5 px-4 py-6 sm:space-y-6 sm:py-8">
         <Card title="Järgmine tund">
           {nextSession ? (
@@ -119,11 +106,6 @@ export default async function DashboardPage() {
           )}
         </Card>
 
-        {currentHomework && (
-          <Card title="Kodutöö">
-            <p className="whitespace-pre-line text-sm">{currentHomework}</p>
-          </Card>
-        )}
 
         <Card title="Mida soovin harjutada">
           {nextSession ? (
@@ -182,9 +164,6 @@ export default async function DashboardPage() {
           </div>
         </Card>
 
-        <Card title="Toimunud tunnid">
-          <LessonHistory lessons={pastLessons} />
-        </Card>
 
         <Card title="Minu hinded">
           <div className="space-y-4">
@@ -271,9 +250,6 @@ export default async function DashboardPage() {
           )}
         </Card>
 
-        <Card title="Materjalid">
-          <MaterialList materials={(materials as Material[]) ?? []} />
-        </Card>
       </main>
     </>
   );
@@ -317,41 +293,3 @@ async function FileList({ files }: { files: SessionFile[] }) {
   );
 }
 
-async function MaterialList({ materials }: { materials: Material[] }) {
-  if (materials.length === 0) return <Empty>Materjale pole veel jagatud.</Empty>;
-
-  const supabase = await createClient();
-
-  return (
-    <ul className="divide-y divide-slate-100">
-      {await Promise.all(
-        materials.map(async (material) => {
-          const { data } = await supabase.storage
-            .from("materials")
-            .createSignedUrl(material.file_path, 60 * 10);
-
-          return (
-            <li key={material.id} className="py-2">
-              <a
-                href={data?.signedUrl ?? "#"}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm underline"
-              >
-                {material.title}
-              </a>
-              {material.student_id && (
-                <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                  ainult sulle
-                </span>
-              )}
-              <p className="text-sm text-slate-500">
-                {[material.grade, material.topic].filter(Boolean).join(" · ")}
-              </p>
-            </li>
-          );
-        }),
-      )}
-    </ul>
-  );
-}
