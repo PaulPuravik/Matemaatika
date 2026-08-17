@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, Empty } from "@/components/ui";
+import { FileLink } from "@/components/FileLink";
 import { formatDate, formatDateTime } from "@/lib/format";
 import {
   cancelParentInvite,
@@ -15,6 +16,7 @@ import type {
   Profile,
   PublicSession,
   SessionFile,
+  SessionFocus,
   Test,
 } from "@/lib/types";
 import FocusForm from "./FocusForm";
@@ -38,20 +40,22 @@ export default async function DashboardPage() {
   const allSessions = (sessions as PublicSession[]) ?? [];
   const now = Date.now();
 
-  const nextSession =
-    [...allSessions]
-      .reverse()
-      .find(
-        (s) => s.status === "upcoming" && new Date(s.scheduled_at).getTime() >= now,
-      ) ?? null;
-
-  // Anything already held, newest first — that is where homework lives.
+  // Every lesson still ahead, soonest first — the student prepares for all of
+  // them, not only the next one.
+  const upcoming = allSessions
+    .filter((s) => s.status === "upcoming" && new Date(s.scheduled_at).getTime() >= now)
+    .sort(
+      (a, b) =>
+        new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+    );
 
   const [
     { data: tests },
     { data: grades },
     { data: parents },
     { data: invites },
+    { data: allFiles },
+    { data: focusRows },
   ] = await Promise.all([
     supabase
       .from("tests")
@@ -70,63 +74,81 @@ export default async function DashboardPage() {
       .select("*")
       .is("accepted_at", null)
       .order("created_at", { ascending: false }),
+    supabase.from("session_files").select("*").order("uploaded_at", { ascending: false }),
+    supabase.from("session_focus").select("*").eq("student_id", profile.id),
   ]);
 
   const linkedParent = ((parents as Profile[]) ?? [])[0] ?? null;
   const pendingInvite = ((invites as ParentInvite[]) ?? [])[0] ?? null;
+  const focus = (focusRows as SessionFocus[]) ?? [];
 
-  let focusText = "";
-
-  const { data: allFiles } = await supabase
-    .from("session_files")
-    .select("*")
-    .order("uploaded_at", { ascending: false });
-  const files = (allFiles as SessionFile[]) ?? [];
-
-  if (nextSession) {
-    const { data: focus } = await supabase
-      .from("session_focus")
-      .select("focus_text")
-      .eq("session_id", nextSession.id)
-      .eq("student_id", profile.id)
-      .maybeSingle();
-    focusText = focus?.focus_text ?? "";
-  }
+  // Only what the student sent in. Homework files come the other way and live
+  // under Kodutöö.
+  const myUploads = ((allFiles as SessionFile[]) ?? []).filter((f) => !f.from_tutor);
+  const looseFiles = myUploads.filter((f) => !f.session_id);
 
   return (
     <>
       <main className="mx-auto max-w-4xl space-y-5 px-4 py-6 sm:space-y-6 sm:py-8">
-        <Card title="Järgmine tund">
-          {nextSession ? (
-            <p className="text-lg font-medium">
-              {formatDateTime(nextSession.scheduled_at)}
-            </p>
-          ) : (
-            <Empty>Järgmist tundi pole veel planeeritud.</Empty>
-          )}
-        </Card>
-
-
-        <Card title="Mida soovin harjutada">
-          {nextSession ? (
-            <FocusForm sessionId={nextSession.id} initialText={focusText} />
-          ) : (
+        <Card title={upcoming.length > 1 ? "Planeeritud tunnid" : "Järgmine tund"}>
+          {upcoming.length === 0 ? (
             <Empty>
-              Kui järgmine tund on planeeritud, saad siia kirjutada, mida soovid
-              harjutada.
+              Järgmist tundi pole veel planeeritud. Faile saad õpetajale saata ka
+              praegu, allpool.
             </Empty>
+          ) : (
+            <ul className="space-y-6">
+              {upcoming.map((session, index) => {
+                const forThisLesson = myUploads.filter(
+                  (f) => f.session_id === session.id,
+                );
+                const text =
+                  focus.find((f) => f.session_id === session.id)?.focus_text ?? "";
+
+                return (
+                  <li
+                    key={session.id}
+                    className="border-t border-slate-100 pt-5 first:border-0 first:pt-0"
+                  >
+                    <p className="text-lg font-medium">
+                      {formatDateTime(session.scheduled_at)}
+                    </p>
+                    {index === 0 && upcoming.length > 1 && (
+                      <p className="text-sm text-slate-500">Kõige lähem tund</p>
+                    )}
+
+                    <div className="mt-3 space-y-2">
+                      <p className="text-sm font-medium text-slate-700">
+                        Mida soovin harjutada
+                      </p>
+                      <FocusForm sessionId={session.id} initialText={text} />
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      <p className="text-sm font-medium text-slate-700">
+                        Failid selle tunni jaoks
+                      </p>
+                      <p className="text-sm text-slate-600">
+                        Lisa pilt või PDF sellest, mida soovid läbi vaadata.
+                      </p>
+                      <Uploader sessionId={session.id} studentId={profile.id} />
+                      <FileList files={forThisLesson} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </Card>
 
         <Card title="Failid õpetajale">
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Lisa siia see, millest tunnis kasu oleks — kodutöö, kontrolltöö
-              parandused, ülesanded, mis ei tulnud välja. Faile saab lisada ka siis,
-              kui järgmist tundi pole veel planeeritud.
+              Siia käib see, mis ei ole ühegi kindla tunni külge seotud — kodutöö,
+              kontrolltöö parandused, ülesanded, mis ei tulnud välja.
             </p>
-            <Uploader sessionId={nextSession?.id ?? null} studentId={profile.id} />
-            <FileList files={files} />
+            <Uploader sessionId={null} studentId={profile.id} />
+            <FileList files={looseFiles} />
           </div>
         </Card>
 
@@ -255,41 +277,23 @@ export default async function DashboardPage() {
   );
 }
 
-async function FileList({ files }: { files: SessionFile[] }) {
+function FileList({ files }: { files: SessionFile[] }) {
   if (files.length === 0) return <Empty>Ühtegi faili pole veel lisatud.</Empty>;
-
-  const supabase = await createClient();
 
   return (
     <ul className="divide-y divide-slate-100">
-      {await Promise.all(
-        files.map(async (file) => {
-          const { data } = await supabase.storage
-            .from("student-files")
-            .createSignedUrl(file.file_path, 60 * 10);
-
-          return (
-            <li key={file.id} className="flex items-center justify-between gap-4 py-2">
-              <a
-                href={data?.signedUrl ?? "#"}
-                target="_blank"
-                rel="noreferrer"
-                className="min-w-0 break-words text-sm underline"
-              >
-                {file.original_name}
-              </a>
-              <form action={deleteFile}>
-                <input type="hidden" name="id" value={file.id} />
-                <input type="hidden" name="path" value={file.file_path} />
-                <button className="text-sm text-slate-500 underline hover:text-red-600">
-                  Kustuta
-                </button>
-              </form>
-            </li>
-          );
-        }),
-      )}
+      {files.map((file) => (
+        <li key={file.id} className="flex items-center justify-between gap-4 py-2">
+          <FileLink path={file.file_path} label={file.original_name} />
+          <form action={deleteFile}>
+            <input type="hidden" name="id" value={file.id} />
+            <input type="hidden" name="path" value={file.file_path} />
+            <button className="text-sm text-slate-500 underline hover:text-red-600">
+              Kustuta
+            </button>
+          </form>
+        </li>
+      ))}
     </ul>
   );
 }
-

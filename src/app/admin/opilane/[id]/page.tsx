@@ -4,14 +4,17 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isCalendarConfigured } from "@/lib/google-calendar";
 import { Card, Empty } from "@/components/ui";
+import { FileLink } from "@/components/FileLink";
 import { formatDate, formatDateTime } from "@/lib/format";
 import {
   deleteAccount,
+  deleteHomeworkFile,
   deleteSession,
   setCalendarAlias,
   unlinkParent,
 } from "@/app/actions/admin";
 import SessionForm from "../../SessionForm";
+import HomeworkUploader from "../../HomeworkUploader";
 import MaterialUploader from "../../MaterialUploader";
 import QuestionThread from "@/components/QuestionThread";
 import type {
@@ -70,15 +73,20 @@ export default async function StudentPage({
   ]);
 
   const mySessions = (sessions as TutorSession[]) ?? [];
-  const myFiles = (files as SessionFile[]) ?? [];
+  const allFiles = (files as SessionFile[]) ?? [];
+  const theirUploads = allFiles.filter((f) => !f.from_tutor);
+  const myFocus = (focus as SessionFocus[]) ?? [];
   const myQuestions = (questions as Question[]) ?? [];
   const allReplies = (replies as QuestionReply[]) ?? [];
   const parent = ((parents as Profile[]) ?? [])[0] ?? null;
   const now = Date.now();
 
-  const nextSession = [...mySessions]
-    .reverse()
-    .find((x) => x.status === "upcoming" && new Date(x.scheduled_at).getTime() >= now);
+  const upcoming = mySessions
+    .filter((x) => x.status === "upcoming" && new Date(x.scheduled_at).getTime() >= now)
+    .sort(
+      (a, b) =>
+        new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+    );
 
   const myMaterials = ((materials as (Material & {
     material_recipients: { student_id: string }[];
@@ -106,11 +114,54 @@ export default async function StudentPage({
         </Card>
       )}
 
-      <Card title="Järgmine tund">
-        {nextSession ? (
-          <p className="text-lg font-medium">{formatDateTime(nextSession.scheduled_at)}</p>
-        ) : (
+      <Card title={`Planeeritud tunnid (${upcoming.length})`}>
+        {upcoming.length === 0 ? (
           <Empty>Planeerimata.</Empty>
+        ) : (
+          <ul className="space-y-4">
+            {upcoming.map((session) => {
+              const text =
+                myFocus.find((f) => f.session_id === session.id)?.focus_text ?? null;
+              const brought = theirUploads.filter((f) => f.session_id === session.id);
+
+              return (
+                <li
+                  key={session.id}
+                  className="border-t border-slate-100 pt-4 first:border-0 first:pt-0"
+                >
+                  <p className="text-lg font-medium">
+                    {formatDateTime(session.scheduled_at)}
+                  </p>
+
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Soovib harjutada
+                  </p>
+                  {text ? (
+                    <p className="mt-0.5 whitespace-pre-line text-sm text-slate-600">
+                      {text}
+                    </p>
+                  ) : (
+                    <p className="mt-0.5 text-sm text-slate-400">Pole veel kirjutanud.</p>
+                  )}
+
+                  {brought.length > 0 && (
+                    <>
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Tunniks lisatud failid
+                      </p>
+                      <ul className="mt-0.5 space-y-1">
+                        {brought.map((file) => (
+                          <li key={file.id}>
+                            <FileLink path={file.file_path} label={file.original_name} />
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </Card>
 
@@ -124,7 +175,7 @@ export default async function StudentPage({
                 key={question.id}
                 question={question}
                 replies={allReplies.filter((r) => r.question_id === question.id)}
-                file={myFiles.find((f) => f.id === question.file_id) ?? null}
+                file={allFiles.find((f) => f.id === question.file_id) ?? null}
                 material={myMaterials.find((m) => m.id === question.material_id) ?? null}
                 asTutor
               />
@@ -134,13 +185,13 @@ export default async function StudentPage({
       </Card>
 
       <Card title="Tema jagatud failid">
-        {myFiles.length === 0 ? (
+        {theirUploads.length === 0 ? (
           <Empty>Faile pole.</Empty>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {myFiles.map((file) => (
+            {theirUploads.map((file) => (
               <li key={file.id} className="py-2">
-                <SignedLink path={file.file_path} bucket="student-files" label={file.original_name} />
+                <FileLink path={file.file_path} label={file.original_name} />
                 <span className="text-sm text-slate-500"> — {formatDateTime(file.uploaded_at)}</span>
               </li>
             ))}
@@ -153,17 +204,50 @@ export default async function StudentPage({
           <Empty>Tunde pole.</Empty>
         ) : (
           <ul className="space-y-3">
-            {mySessions.map((session) => (
-              <li key={session.id} className="rounded-lg border border-slate-200 p-3">
-                <SessionForm session={session} />
-                <form action={deleteSession} className="mt-2">
-                  <input type="hidden" name="id" value={session.id} />
-                  <button className="text-sm text-slate-500 underline hover:text-red-600">
-                    Kustuta tund
-                  </button>
-                </form>
-              </li>
-            ))}
+            {mySessions.map((session) => {
+              const attached = allFiles.filter(
+                (f) => f.from_tutor && f.session_id === session.id,
+              );
+
+              return (
+                <li key={session.id} className="rounded-lg border border-slate-200 p-3">
+                  <SessionForm session={session} />
+
+                  <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+                    <p className="text-sm font-medium text-slate-700">
+                      Kodutöö failid (õpilane ja vanem näevad)
+                    </p>
+                    {attached.length > 0 && (
+                      <ul className="divide-y divide-slate-100">
+                        {attached.map((file) => (
+                          <li
+                            key={file.id}
+                            className="flex items-center justify-between gap-4 py-2"
+                          >
+                            <FileLink path={file.file_path} label={file.original_name} />
+                            <form action={deleteHomeworkFile}>
+                              <input type="hidden" name="id" value={file.id} />
+                              <input type="hidden" name="path" value={file.file_path} />
+                              <button className="text-sm text-slate-500 underline hover:text-red-600">
+                                Kustuta
+                              </button>
+                            </form>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <HomeworkUploader sessionId={session.id} studentId={id} />
+                  </div>
+
+                  <form action={deleteSession} className="mt-3">
+                    <input type="hidden" name="id" value={session.id} />
+                    <button className="text-sm text-slate-500 underline hover:text-red-600">
+                      Kustuta tund
+                    </button>
+                  </form>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
@@ -195,16 +279,6 @@ export default async function StudentPage({
           </ul>
         ) : (
           <Empty>Pole lisatud.</Empty>
-        )}
-      </Card>
-
-      <Card title="Mida soovib harjutada">
-        {nextSession && (focus as SessionFocus[])?.some((f) => f.session_id === nextSession.id) ? (
-          <p className="whitespace-pre-line text-sm">
-            {(focus as SessionFocus[]).find((f) => f.session_id === nextSession.id)?.focus_text}
-          </p>
-        ) : (
-          <Empty>Pole veel kirjutanud.</Empty>
         )}
       </Card>
 
@@ -248,29 +322,6 @@ export default async function StudentPage({
         </div>
       </Card>
     </main>
-  );
-}
-
-async function SignedLink({
-  path,
-  bucket,
-  label,
-}: {
-  path: string;
-  bucket: string;
-  label: string;
-}) {
-  const supabase = await createClient();
-  const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 10);
-  return (
-    <a
-      href={data?.signedUrl ?? "#"}
-      target="_blank"
-      rel="noreferrer"
-      className="break-words text-sm underline"
-    >
-      {label}
-    </a>
   );
 }
 

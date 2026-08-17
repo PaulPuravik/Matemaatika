@@ -113,6 +113,64 @@ export async function deleteSession(formData: FormData) {
 }
 
 /**
+ * Records a file the tutor has just attached to a lesson's homework. The upload
+ * itself goes straight from the browser into the student's own folder, which
+ * the tutor may write to and nobody else can read.
+ */
+export async function attachHomeworkFile(
+  sessionId: string,
+  studentId: string,
+  filePath: string,
+  originalName: string,
+): Promise<ActionState> {
+  await assertAdmin();
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("session_files").insert({
+    session_id: sessionId,
+    student_id: studentId,
+    file_path: filePath,
+    original_name: originalName,
+    from_tutor: true,
+  });
+
+  if (error) {
+    // The column arrives with migration 0008; without it the insert fails with
+    // nothing on screen explaining why.
+    if (/from_tutor/.test(error.message)) {
+      return {
+        error:
+          "Andmebaasis puudub kodutöö failide tugi. Jooksuta Supabase SQL " +
+          "editoris migratsioon 0008_homework_files.sql ja proovi uuesti. " +
+          `(${error.message})`,
+      };
+    }
+    return { error: error.message };
+  }
+
+  await emailStudent(studentId, "Kodutöö juurde lisati fail", [
+    `Õpetaja lisas kodutöö juurde faili "${originalName}".`,
+  ]);
+
+  revalidatePath("/admin", "layout");
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+export async function deleteHomeworkFile(formData: FormData) {
+  await assertAdmin();
+  const id = String(formData.get("id") ?? "");
+  const path = String(formData.get("path") ?? "");
+
+  const supabase = await createClient();
+  await supabase.storage.from("student-files").remove([path]);
+  await supabase.from("session_files").delete().eq("id", id);
+
+  revalidatePath("/admin", "layout");
+  revalidatePath("/dashboard", "layout");
+}
+
+/**
  * Records a material. `studentId` null shares it with everyone; set, and only
  * that student (and their parent) can see it.
  */

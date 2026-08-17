@@ -1,9 +1,17 @@
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, Empty, PageHeader } from "@/components/ui";
+import { FileLink } from "@/components/FileLink";
 import { LessonHistory } from "@/components/LessonHistory";
 import { formatDate, formatDateTime } from "@/lib/format";
-import type { Grade, Profile, PublicSession, Test } from "@/lib/types";
+import type {
+  Grade,
+  Profile,
+  PublicSession,
+  SessionFile,
+  SessionFocus,
+  Test,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -42,42 +50,47 @@ export default async function ParentPage() {
   const allSessions = (sessions as PublicSession[]) ?? [];
   const now = Date.now();
 
-  const nextSession =
-    [...allSessions]
-      .reverse()
-      .find(
-        (s) => s.status === "upcoming" && new Date(s.scheduled_at).getTime() >= now,
-      ) ?? null;
+  const upcoming = allSessions
+    .filter((s) => s.status === "upcoming" && new Date(s.scheduled_at).getTime() >= now)
+    .sort(
+      (a, b) =>
+        new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+    );
 
   const pastLessons = allSessions.filter(
     (s) => s.status === "done" || new Date(s.scheduled_at).getTime() < now,
   );
-  const withHomework = pastLessons.find((s) => s.homework) ?? null;
-  const currentHomework = withHomework?.homework ?? null;
-  const currentHomeworkDue = withHomework?.homework_due ?? null;
 
-  const { data: tests } = await supabase
-    .from("tests")
-    .select("*")
-    .eq("student_id", profile.parent_of)
-    .gte("test_date", new Date().toISOString().slice(0, 10))
-    .order("test_date", { ascending: true });
+  const [{ data: tests }, { data: grades }, { data: focusRows }, { data: files }] =
+    await Promise.all([
+      supabase
+        .from("tests")
+        .select("*")
+        .eq("student_id", profile.parent_of)
+        .gte("test_date", new Date().toISOString().slice(0, 10))
+        .order("test_date", { ascending: true }),
+      supabase
+        .from("grades")
+        .select("*")
+        .eq("student_id", profile.parent_of)
+        .order("received_on", { ascending: false }),
+      supabase.from("session_focus").select("*").eq("student_id", profile.parent_of),
+      supabase
+        .from("session_files")
+        .select("*")
+        .eq("student_id", profile.parent_of)
+        .order("uploaded_at", { ascending: false }),
+    ]);
 
-  const { data: grades } = await supabase
-    .from("grades")
-    .select("*")
-    .eq("student_id", profile.parent_of)
-    .order("received_on", { ascending: false });
+  const focus = (focusRows as SessionFocus[]) ?? [];
+  const tutorFiles = ((files as SessionFile[]) ?? []).filter((f) => f.from_tutor);
 
-  let focusText: string | null = null;
-  if (nextSession) {
-    const { data: focus } = await supabase
-      .from("session_focus")
-      .select("focus_text")
-      .eq("session_id", nextSession.id)
-      .maybeSingle();
-    focusText = focus?.focus_text ?? null;
-  }
+  const withHomework = pastLessons.find(
+    (s) => s.homework || tutorFiles.some((f) => f.session_id === s.id),
+  );
+  const homeworkFiles = withHomework
+    ? tutorFiles.filter((f) => f.session_id === withHomework.id)
+    : [];
 
   return (
     <>
@@ -88,34 +101,65 @@ export default async function ParentPage() {
           <Empty>Ülevaade. Muudatusi saab teha õpilane ise.</Empty>
         </Card>
 
-        <Card title="Järgmine tund">
-          {nextSession ? (
-            <p className="text-lg font-medium">
-              {formatDateTime(nextSession.scheduled_at)}
-            </p>
-          ) : (
+        <Card title={upcoming.length > 1 ? "Planeeritud tunnid" : "Järgmine tund"}>
+          {upcoming.length === 0 ? (
             <Empty>Järgmist tundi pole veel planeeritud.</Empty>
+          ) : (
+            <ul className="space-y-4">
+              {upcoming.map((session) => {
+                const text =
+                  focus.find((f) => f.session_id === session.id)?.focus_text ?? null;
+
+                return (
+                  <li
+                    key={session.id}
+                    className="border-t border-slate-100 pt-4 first:border-0 first:pt-0"
+                  >
+                    <p className="text-lg font-medium">
+                      {formatDateTime(session.scheduled_at)}
+                    </p>
+                    {text ? (
+                      <>
+                        <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Soovib harjutada
+                        </p>
+                        <p className="mt-0.5 whitespace-pre-line text-sm text-slate-600">
+                          {text}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-1 text-sm text-slate-400">
+                        Pole veel kirjutanud, mida soovib harjutada.
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </Card>
 
-        {currentHomework && (
+        {withHomework && (
           <Card title="Kodutöö">
-            <p className="whitespace-pre-line text-sm">{currentHomework}</p>
-            {currentHomeworkDue && (
+            {withHomework.homework && (
+              <p className="whitespace-pre-line text-sm">{withHomework.homework}</p>
+            )}
+            {withHomework.homework_due && (
               <p className="mt-2 text-sm text-slate-500">
-                Tähtaeg: {formatDate(currentHomeworkDue)}
+                Tähtaeg: {formatDate(withHomework.homework_due)}
               </p>
+            )}
+            {homeworkFiles.length > 0 && (
+              <ul className="mt-3 space-y-1">
+                {homeworkFiles.map((file) => (
+                  <li key={file.id}>
+                    <FileLink path={file.file_path} label={file.original_name} />
+                  </li>
+                ))}
+              </ul>
             )}
           </Card>
         )}
-
-        <Card title="Mida soovib harjutada">
-          {focusText ? (
-            <p className="whitespace-pre-line text-sm">{focusText}</p>
-          ) : (
-            <Empty>Pole veel kirjutatud.</Empty>
-          )}
-        </Card>
 
         <Card title="Toimunud tunnid">
           <LessonHistory lessons={pastLessons} />

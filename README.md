@@ -37,7 +37,8 @@ two and not the third.
 Create a project, then run the files in `supabase/migrations/` in order
 (`0001_init.sql`, `0002_school_and_parent_invites.sql`,
 `0003_grades_and_private_materials.sql`, `0004_lesson_summary_and_homework.sql`,
-`0005_approvals_and_account_admin.sql`, `0006_google_calendar_sync.sql`, `0007_recipients_homework_due_and_questions.sql`)
+`0005_approvals_and_account_admin.sql`, `0006_google_calendar_sync.sql`,
+`0007_recipients_homework_due_and_questions.sql`, `0008_homework_files.sql`)
 in the SQL editor.
 They create the tables, RLS policies, the two storage buckets (both private),
 the trigger that turns a signup into a `profiles` row, and the parent-invite
@@ -118,20 +119,33 @@ Files move in both directions, and both are per student:
 
 - **Student → tutor.** Uploads can be made at any time, whether or not a lesson
   is scheduled — files without a lesson carry a null `session_id` and land under
-  `general/`. They go to Supabase Storage
+  `general/`, and files attached to a particular lesson sit beside that lesson's
+  *mida soovin harjutada* note. They go to Supabase Storage
   under `student-files/<student_id>/…`, so the storage policy alone keeps one
   student out of another's folder. The admin view lists them grouped
   under the student who sent them.
-- **Tutor → student.** Each material has an `audience`: `all`, or `selected`
-  with the recipients listed in `material_recipients`, so one file can go to
-  several named students. The storage policy resolves the object back to its
-  material row rather than trusting the path, which is what makes multiple
+- **Tutor → student, as a material.** Each material has an `audience`: `all`, or
+  `selected` with the recipients listed in `material_recipients`, so one file can
+  go to several named students. The storage policy resolves the object back to
+  its material row rather than trusting the path, which is what makes multiple
   recipients possible at all.
+- **Tutor → student, as homework.** Files attached to one lesson's homework
+  share the `student-files` bucket and the student's own folder, because the
+  read rule is identical. What differs is who may write and delete, and that is
+  what `session_files.from_tutor` records: the student can neither forge the
+  flag nor delete a file the tutor sent them, and the storage policy resolves
+  the object back to its row rather than reading the path, since the path alone
+  cannot tell the two directions apart.
 
-After a lesson the tutor fills in **what was covered** and the **homework** on
-that session. Both show up on the student's dashboard — the newest homework as
-a card of its own, and the full run under *Toimunud tunnid* — and identically on
-the parent's page. The student is emailed when homework is set or changed.
+After a lesson the tutor fills in **what was covered**, the **homework** and any
+**files** it needs. All of it shows up on the student's *Kodutöö* page and on the
+parent's page. The student is emailed when homework is set or changed and when a
+file is attached to it.
+
+Every lesson still ahead is listed rather than only the next one — on the
+student's dashboard each carries its own focus note and its own uploader, the
+parent sees the same list read-only, and `/admin` has **Kõik planeeritud tunnid**
+across all students.
 
 Students enter their own **grades** (subject, mark, date, optional note). The
 mark is free text so `5`, `4+`, `arvestatud` and `87%` all fit. The tutor and
@@ -207,7 +221,7 @@ objects (`auth.uid()`, `auth.users`, `storage`) so the migration runs unmodified
 supabase/tests/run.sh -h /tmp -p 5433 -U postgres
 ```
 
-136 checks in six suites:
+151 checks in seven suites:
 
 - `rls_tests.sql` — student isolation, cross-student write attempts, privilege
   escalation, parent read-only access, admin access, storage path rules.
@@ -228,6 +242,11 @@ supabase/tests/run.sh -h /tmp -p 5433 -U postgres
   invisible to a third as both a row and a storage object, a student cannot add
   themselves as a recipient, and a question thread is readable only by its
   student, their parent and the tutor, with the parent unable to reply.
+- `homework_files_tests.sql` — the tutor can write into a student's folder and
+  the student and parent can read what lands there, while another student sees
+  neither the row nor the object; the student cannot delete a file the tutor
+  attached, cannot pass their own upload off as tutor-sent, and still cannot
+  write into anyone else's folder.
 
 ```bash
 npm run typecheck   # tsc
@@ -242,7 +261,8 @@ src/app/gate         shared password screen + its route handler
 src/app/login        Supabase email/password sign-in
 src/app/signup       sign-up as student (name, grade, textbook, school) or parent (invite code)
 src/app/liitu        manual invite-code entry, for a parent whose code needs re-trying
-src/app/dashboard    student: overview, plus tabs for Kodutöö, Materjalid and Küsimused
+src/app/dashboard    student: every planned lesson with its focus note and files,
+                     plus tabs for Kodutöö, Materjalid and Küsimused
 src/app/parent       parent: read-only view of their child, including homework and lesson summaries
 src/app/admin        tutor: overview, pending approvals, materials, calendar
 src/app/admin/opilane/[id]  one student on their own page, reached from the hamburger menu

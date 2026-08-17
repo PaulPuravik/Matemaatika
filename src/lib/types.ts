@@ -50,6 +50,12 @@ export type SessionFile = {
   file_path: string;
   original_name: string;
   uploaded_at: string;
+  /**
+   * Which way the file travelled. Both directions share the bucket and the
+   * student's folder, so the row is the only thing that distinguishes a
+   * worksheet the tutor attached from something the student sent in.
+   */
+  from_tutor: boolean;
 };
 
 export type Test = {

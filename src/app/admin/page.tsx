@@ -43,6 +43,13 @@ export default async function AdminPage() {
   const unanswered = (questions as Question[]) ?? [];
   const now = Date.now();
 
+  // Every lesson still ahead, across all students, soonest first. Sessions came
+  // back ordered by time already, so this is just the tail of the list.
+  const upcoming = allSessions.filter(
+    (s) => s.status === "upcoming" && new Date(s.scheduled_at).getTime() >= now,
+  );
+  const byStudent = new Map(everyone.map((p) => [p.id, p.full_name]));
+
   const allMaterials =
     (materials as (Material & { material_recipients: { student_id: string }[] })[]) ?? [];
 
@@ -126,6 +133,30 @@ export default async function AdminPage() {
                 </li>
               );
             })}
+          </ul>
+        )}
+      </Card>
+
+      <Card title={`Kõik planeeritud tunnid (${upcoming.length})`}>
+        {upcoming.length === 0 ? (
+          <Empty>Ühtegi tundi pole planeeritud.</Empty>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {upcoming.map((session) => (
+              <li key={session.id} className="py-2">
+                <Link
+                  href={`/admin/opilane/${session.student_id}`}
+                  className="flex flex-col gap-0.5 hover:opacity-80 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+                >
+                  <span className="text-sm font-medium">
+                    {formatDateTime(session.scheduled_at)}
+                  </span>
+                  <span className="truncate text-sm text-slate-500">
+                    {byStudent.get(session.student_id) ?? "tundmatu õpilane"}
+                  </span>
+                </Link>
+              </li>
+            ))}
           </ul>
         )}
       </Card>

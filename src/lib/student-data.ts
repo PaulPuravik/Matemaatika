@@ -18,10 +18,12 @@ export async function askableItems(): Promise<Askable[]> {
   ]);
 
   const rows: Array<{ id: string; kind: "file" | "material"; label: string; path: string; bucket: string }> = [
+    // Homework files the tutor attached are askable too — that is exactly the
+    // sort of thing a student gets stuck on — so say which is which.
     ...(((files as SessionFile[]) ?? []).map((f) => ({
       id: f.id,
       kind: "file" as const,
-      label: f.original_name,
+      label: f.from_tutor ? `${f.original_name} (kodutöö)` : f.original_name,
       path: f.file_path,
       bucket: "student-files",
     }))),
