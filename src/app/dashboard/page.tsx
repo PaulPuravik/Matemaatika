@@ -128,11 +128,13 @@ export default async function DashboardPage() {
                       <p className="text-sm font-medium text-slate-700">
                         Failid selle tunni jaoks
                       </p>
-                      <p className="text-sm text-slate-600">
-                        Lisa pilt või PDF sellest, mida soovid läbi vaadata.
-                      </p>
+                      {index === 0 && (
+                        <p className="text-sm text-slate-600">
+                          Lisa pilt või PDF sellest, mida soovid läbi vaadata.
+                        </p>
+                      )}
                       <Uploader sessionId={session.id} studentId={profile.id} />
-                      <FileList files={forThisLesson} />
+                      {forThisLesson.length > 0 && <FileList files={forThisLesson} />}
                     </div>
                   </li>
                 );
